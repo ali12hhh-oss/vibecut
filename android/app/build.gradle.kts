@@ -43,3 +43,12 @@ kotlin {
 flutter {
     source = "../.."
 }
+configurations.all {
+    resolutionStrategy {
+        eachDependency {
+            if (requested.group == "com.arthenica" && requested.name.contains("ffmpeg-kit")) {
+                useVersion("6.0.3") // استخدام إصدار أحدث وموجود
+            }
+        }
+    }
+}
