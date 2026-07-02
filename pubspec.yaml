@@ -10,7 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_bloc: ^8.1.3
-  ffmpeg_kit_flutter_full: 6.0.2
+  ffmpeg_kit_flutter_full_lts: 6.0.2
   easy_localization: ^3.0.2
   arabic_reshaper: ^0.0.1
   shared_preferences: ^2.2.2
