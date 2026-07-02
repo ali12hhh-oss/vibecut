@@ -1,0 +1,15 @@
+workflows:
+  default:
+    name: Default Workflow
+    environment:
+      flutter: stable
+    scripts:
+      - name: Flutter clean and get dependencies
+        script: |
+          flutter clean
+          flutter pub get
+      - name: Build Android APK
+        script: |
+          flutter build apk --release
+    artifacts:
+      - build/**/outputs/apk/**/*.apk
