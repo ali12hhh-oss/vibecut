@@ -1,6 +1,6 @@
 ﻿// ملاحظة: ستحتاج لإضافة مكتبة flutter_ffmpeg أو ffmpeg_kit_flutter في pubspec.yaml
-import 'package:ffmpeg_kit_flutter_full_lts/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_full_lts/ffmpeg_kit.dart';
+import import 'package:ffmpeg_kit_flutter_full/ffmpeg_kit.dart';
+import import 'package:ffmpeg_kit_flutter_full/ffmpeg_kit.dart';
 
 class EngineFFmpeg {
   
