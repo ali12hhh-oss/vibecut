@@ -4,9 +4,12 @@ workflows:
     environment:
       flutter: stable
     scripts:
-      - name: Flutter clean and get dependencies
+      - name: Full Clean and get dependencies
         script: |
           flutter clean
+          rm -rf pubspec.lock
+          # مسح ذاكرة Gradle المخفية التي قد تحتوي على الخطأ
+          rm -rf android/.gradle
           flutter pub get
       - name: Build Android APK
         script: |
