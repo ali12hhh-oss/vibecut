@@ -1,16 +1,19 @@
-﻿import 'package:flutter/material.dart';
 import 'package:arabic_reshaper/arabic_reshaper.dart';
+import 'package:flutter/material.dart';
 
 class EngineText {
-  static const String defaultFont = 'assets/core/fonts/Roboto-Regular.ttf';
+  static const String defaultFontFamily = 'Tajawal';
 
   String processArabic(String text) {
+    if (text.trim().isEmpty) {
+      return text;
+    }
     return ArabicReshaper().reshape(text);
   }
 
-  TextStyle getTextStyle({required String fontPath, double size = 16.0}) {
+  TextStyle getTextStyle({String fontFamily = defaultFontFamily, double size = 16.0}) {
     return TextStyle(
-      fontFamily: fontPath,
+      fontFamily: fontFamily,
       fontSize: size,
     );
   }

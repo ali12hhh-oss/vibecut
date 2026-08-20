@@ -1,15 +1,21 @@
-﻿import '../models/layer_model.dart';
-import '../../core/engine_resource.dart';
+import 'asset_repository.dart';
+import '../models/layer_model.dart';
 
 class VideoRepository {
-  final EngineResource _resourceEngine = EngineResource();
+  VideoRepository({AssetRepository? assetRepository}) : _assetRepository = assetRepository ?? AssetRepository();
+
+  final AssetRepository _assetRepository;
 
   Future<List<String>> getAvailableFilters() async {
-    // جلب الفلاتر من المجلدات المدمجة والمحملة
-    return ['sepia', 'bw', 'vivid']; 
+    final localFilters = await _assetRepository.getLocalAssets('assets/core/filters/');
+    final downloadedFilters = await _assetRepository.getDownloadedAssets('extra_filters');
+    return {...localFilters, ...downloadedFilters}.toList()..sort();
   }
 
   Future<void> saveProject(List<LayerModel> layers) async {
-    // حفظ حالة المشروع محلياً
+    if (layers.isEmpty) {
+      throw StateError('Cannot save an empty project.');
+    }
+    // Project persistence is intentionally handled by the future storage layer.
   }
 }

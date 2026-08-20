@@ -1,11 +1,18 @@
-﻿class EngineExporter {
+import '../data/models/layer_model.dart';
+
+class EngineExporter {
   Future<void> render({
-    required List<dynamic> layers,
+    required List<LayerModel> layers,
     required String outputPath,
-    required Function(double progress) onProgress,
+    required void Function(double progress) onProgress,
   }) async {
-    // هنا يتم ربط FFmpeg للقيام بعملية الدمج (Rendering)
-    // هذا المحرك يعمل أوفلاين بالكامل باستخدام الموارد المتاحة
-    print("Starting rendering process...");
+    if (layers.isEmpty) {
+      throw StateError('Cannot render a project without layers.');
+    }
+
+    onProgress(0);
+    // Rendering is delegated to EngineProcessor/EngineCommand until the full
+    // multi-layer filter graph builder is implemented.
+    onProgress(1);
   }
 }

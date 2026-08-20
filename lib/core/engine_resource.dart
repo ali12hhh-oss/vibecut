@@ -1,9 +1,9 @@
-﻿import 'package:flutter/services.dart' show rootBundle;
 import 'dart:io';
+
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 
 class EngineResource {
-  // دالة لجلب مسار مجلد التحميلات الخارجي
   Future<String> getDownloadPath() async {
     final directory = await getApplicationDocumentsDirectory();
     final path = '${directory.path}/downloads';
@@ -14,18 +14,30 @@ class EngineResource {
     return path;
   }
 
-  // دالة لجلب المسار الصحيح لأي مورد (تأثير، انتقال، إلخ)
-  Future<String> getResourcePath(String folderPath, String fileName) async {
-    String localPath = 'assets/core/$folderPath/$fileName';
-    
+  Future<String?> getBundledAssetPath(String folderPath, String fileName) async {
+    if (fileName.trim().isEmpty) {
+      return null;
+    }
+
+    final localPath = 'assets/core/$folderPath/$fileName';
     try {
-      // محاولة التحقق من وجود الملف في المسار الأساسي (Offline)
       await rootBundle.load(localPath);
       return localPath;
-    } catch (e) {
-      // إذا لم يوجد، نعود بمسار المجلد الخارجي (Downloads)
-      String downloadPath = await getDownloadPath();
-      return '$downloadPath/$folderPath/$fileName';
+    } catch (_) {
+      return null;
     }
+  }
+
+  Future<String> getDownloadedResourcePath(String folderPath, String fileName) async {
+    final downloadPath = await getDownloadPath();
+    return '$downloadPath/$folderPath/$fileName';
+  }
+
+  Future<String> getResourcePath(String folderPath, String fileName) async {
+    final bundledAsset = await getBundledAssetPath(folderPath, fileName);
+    if (bundledAsset != null) {
+      return bundledAsset;
+    }
+    return getDownloadedResourcePath(folderPath, fileName);
   }
 }
