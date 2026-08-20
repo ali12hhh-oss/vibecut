@@ -1,49 +1,56 @@
-﻿import import 'package:ffmpeg_kit_flutter_full/ffmpeg_kit.dart';
-import import 'package:ffmpeg_kit_flutter_full/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_full/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_full/return_code.dart';
 
 class EngineCommand {
-  
-  /// تنفيذ أمر FFmpeg والتحقق من النتيجة
   Future<bool> executeCommand(String command) async {
     final session = await FFmpegKit.execute(command);
     final returnCode = await session.getReturnCode();
 
     if (ReturnCode.isSuccess(returnCode)) {
-      print("Command executed successfully: $command");
       return true;
-    } else {
-      final failStackTrace = await session.getFailStackTrace();
-      print("Command failed: $command with error: $failStackTrace");
-      return false;
     }
+
+    final failStackTrace = await session.getFailStackTrace();
+    throw Exception(failStackTrace ?? 'FFmpeg command failed');
   }
 
-  /// بناء أمر انتقال احترافي (يجمع بين الفيديو والانتقال)
+  String buildConcatCommand({
+    required List<String> inputs,
+    required String output,
+  }) {
+    final inputArgs = inputs.map((input) => '-i "${_escape(input)}"').join(' ');
+    final streams = List.generate(inputs.length, (index) => '[$index:v:0][$index:a:0]').join();
+    return '$inputArgs -filter_complex "${streams}concat=n=${inputs.length}:v=1:a=1[v][a]" '
+        '-map "[v]" -map "[a]" -c:v libx264 -preset veryfast -crf 23 -c:a aac "${_escape(output)}"';
+  }
+
   String buildTransitionCommand({
     required String video1,
     required String video2,
-    required String transition,
     required String output,
-    String duration = "1.0",
+    String transition = 'slideleft',
+    String duration = '1.0',
+    String offset = '4.0',
   }) {
-    // نستخدم مرشحات FFmpeg المتقدمة لدمج الفيديوهات مع الانتقال
-    return '-i "$video1" -i "$video2" -i "$transition" '
-           '-filter_complex "[0:v][1:v]xfade=transition=slideleft:duration=$duration:offset=4[v]" '
-           '-map "[v]" -c:v libx264 -preset ultrafast "$output"';
+    return '-i "${_escape(video1)}" -i "${_escape(video2)}" '
+        '-filter_complex "[0:v][1:v]xfade=transition=$transition:duration=$duration:offset=$offset[v]" '
+        '-map "[v]" -c:v libx264 -preset veryfast -crf 23 "${_escape(output)}"';
   }
 
-  /// أمر قص الفيديو مع الحفاظ على الجودة
   String buildTrimCommand({
     required String input,
     required String start,
     required String duration,
     required String output,
   }) {
-    return '-ss $start -i "$input" -t $duration -c:v copy -c:a copy "$output"';
+    return '-ss $start -i "${_escape(input)}" -t $duration -c:v copy -c:a copy "${_escape(output)}"';
   }
 
-  /// أمر دمج أصوات أو تأثيرات صوتية
   String buildAudioMixCommand(String videoInput, String audioInput, String output) {
-    return '-i "$videoInput" -i "$audioInput" -c:v copy -filter_complex "[0:a][1:a]amerge=inputs=2[a]" -map 0:v -map "[a]" -ac 2 "$output"';
+    return '-i "${_escape(videoInput)}" -i "${_escape(audioInput)}" '
+        '-c:v copy -filter_complex "[0:a][1:a]amix=inputs=2:duration=longest[a]" '
+        '-map 0:v -map "[a]" -ac 2 "${_escape(output)}"';
   }
+
+  String _escape(String value) => value.replaceAll('"', '\\"');
 }

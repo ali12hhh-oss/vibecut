@@ -1,4 +1,4 @@
-﻿name: vibecut_pro
+name: vibecut_pro
 description: "A professional video editor project."
 publish_to: 'none'
 version: 1.0.0+1
@@ -23,7 +23,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  
+
   fonts:
     - family: Tajawal
       fonts:
@@ -46,7 +46,7 @@ flutter:
     - assets/core/effects/overlays/
     - assets/core/effects/transitions/
     - assets/core/text_presets/
-    
+
     # موارد التحميل الديناميكي (Cloud/Downloadable)
     - assets/downloads/extra_fonts/
     - assets/downloads/extra_stickers/

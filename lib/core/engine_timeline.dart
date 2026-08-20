@@ -1,41 +1,43 @@
-﻿class TimelineSegment {
+class TimelineSegment {
+  TimelineSegment({
+    required this.videoPath,
+    required this.duration,
+    this.label,
+    this.transitionPath,
+    this.startTime = 0.0,
+  })  : assert(duration > 0, 'duration must be greater than zero'),
+        assert(startTime >= 0, 'startTime cannot be negative');
+
   final String videoPath;
+  final String? label;
   final String? transitionPath;
   final double startTime;
   final double duration;
 
-  TimelineSegment({
-    required this.videoPath,
-    this.transitionPath,
-    this.startTime = 0.0,
-    required this.duration,
-  });
+  bool get isSample => videoPath.startsWith('sample://');
+
+  String get displayName => label?.trim().isNotEmpty == true ? label!.trim() : videoPath.split('/').last;
 }
 
 class EngineTimeline {
-  List<TimelineSegment> _segments = [];
+  final List<TimelineSegment> _segments = [];
 
-  // إضافة مقطع جديد للتايم لاين
   void addSegment(TimelineSegment segment) {
     _segments.add(segment);
   }
 
-  // حذف مقطع
   void removeSegment(int index) {
     if (index >= 0 && index < _segments.length) {
       _segments.removeAt(index);
     }
   }
 
-  // الحصول على كل المقاطع الحالية
-  List<TimelineSegment> get segments => _segments;
+  List<TimelineSegment> get segments => List.unmodifiable(_segments);
 
-  // مسح التايم لاين بالكامل
   void clearTimeline() {
     _segments.clear();
   }
 
-  // حساب إجمالي مدة المشروع بناءً على كل المقاطع
   double get totalDuration {
     return _segments.fold(0.0, (sum, item) => sum + item.duration);
   }

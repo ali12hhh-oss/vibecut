@@ -1,21 +1,26 @@
-﻿import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class EngineSettings {
-  // حفظ اللغة المستخدمة
+  static const _languageKey = 'lang';
+  static const _fontKey = 'font';
+
   Future<void> setLanguage(String langCode) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('lang', langCode);
+    await prefs.setString(_languageKey, langCode);
   }
 
-  // استرجاع اللغة
   Future<String> getLanguage() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('lang') ?? 'en';
+    return prefs.getString(_languageKey) ?? 'ar';
   }
 
-  // حفظ الخط المختار
   Future<void> setFont(String fontName) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('font', fontName);
+    await prefs.setString(_fontKey, fontName);
+  }
+
+  Future<String> getFont() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_fontKey) ?? 'Tajawal';
   }
 }
