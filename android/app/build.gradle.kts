@@ -1,5 +1,6 @@
 plugins {
     id("com.android.application")
+    id("org.jetbrains.kotlin.android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
@@ -39,16 +40,6 @@ flutter {
     source = "../.."
 }
 
-// تعديل استراتيجية حل المكتبات لضمان عدم البحث عن إصدارات مفقودة
-configurations.all {
-    resolutionStrategy {
-        eachDependency {
-            if (requested.group == "com.arthenica" && requested.name.contains("ffmpeg-kit")) {
-                useVersion("6.0.3")
-                because("استخدام إصدار 6.0.3 المستقر والموجود في المستودعات بدلاً من الإصدارات المفقودة")
-            }
-        }
-        // منع أي مكتبة من جلب نسخ قديمة أو مكسورة
-        force("com.arthenica:ffmpeg-kit-full:6.0.3")
-    }
+dependencies {
+    implementation("androidx.core:core-ktx:1.13.1")
 }
