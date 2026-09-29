@@ -348,7 +348,10 @@ class EngineProcessor {
   }
 
   /// يحل مسار مدخل إما إلى ملف حقيقي على الجهاز (من المعرض) أو يستخرجه من أصول التطبيق إن كان مسار أصل
-Future<String> _resolveInputPath(String path, String workDirPath) => path.startsWith('assets/')
-    ? EngineProcessor()._extractAsset(path, workDirPath)
-    : Future.value(path);
+  Future<String> _resolveInputPath(String path, String workDirPath) {
+    if (path.startsWith('assets/')) {
+      return _extractAsset(path, workDirPath);
+    }
+    return Future.value(path);
+  }
 }
