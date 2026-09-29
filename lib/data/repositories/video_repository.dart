@@ -2,6 +2,7 @@
 import '../../core/engine_resource.dart';
 
 class VideoRepository {
+  // ignore: unused_field
   final EngineResource _resourceEngine = EngineResource();
 
   Future<List<String>> getAvailableFilters() async {
