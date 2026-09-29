@@ -22,6 +22,21 @@ subprojects {
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
 
+// رفع compileSdk لمكتبات الإضافات (مثل file_picker) إلى 36
+// لأن flutter_plugin_android_lifecycle تتطلب 36 أو أحدث. لا يغيّر minSdk ولا targetSdk.
+subprojects {
+    val raiseCompileSdk: Project.() -> Unit = {
+        extensions
+            .findByType(com.android.build.api.dsl.LibraryExtension::class.java)
+            ?.let { it.compileSdk = 36 }
+    }
+    if (state.executed) {
+        raiseCompileSdk()
+    } else {
+        afterEvaluate { raiseCompileSdk() }
+    }
+}
+
 subprojects {
     project.evaluationDependsOn(":app")
 }
