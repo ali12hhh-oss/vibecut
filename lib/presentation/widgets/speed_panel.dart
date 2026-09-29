@@ -1,6 +1,6 @@
 ﻿import 'package:flutter/material.dart';
 
-/// لوحة تحكم بسرعة المقطع: شريط تمرير بين أيقونتي بطيء/سريع، مع معاينة حية فورية للفيديو أثناء السحب
+/// لوحة تحكم بسرعة المقطع: شريط تمرير بين أيقونتي بطيء/سريع
 class SpeedPanel extends StatefulWidget {
   final double initialSpeed;
   final ValueChanged<double> onChanged;
@@ -25,10 +25,20 @@ class _SpeedPanelState extends State<SpeedPanel> {
           color: Color(0xFF1A1A1A),
           borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
         ),
-        padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
+        padding: const EdgeInsets.fromLTRB(20, 4, 12, 14),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white70, size: 20),
+                  tooltip: 'إغلاق',
+                  onPressed: () => Navigator.of(context).maybePop(),
+                ),
+              ],
+            ),
             Text(
               '${_speed.toStringAsFixed(_ticks.contains(_speed) && _speed == _speed.roundToDouble() ? 0 : 2)}x',
               style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),

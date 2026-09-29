@@ -14,32 +14,49 @@ class TransitionPanel extends StatelessWidget {
     return SafeArea(
       top: false,
       child: Container(
-        height: 120,
+        height: 156,
         decoration: const BoxDecoration(
           color: Color(0xFF1A1A1A),
           borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
         ),
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          itemCount: transitionPresets.length + 1,
-          separatorBuilder: (_, __) => const SizedBox(width: 10),
-          itemBuilder: (context, index) {
-            if (index == 0) {
-              return TransitionPreviewTile(
-                preset: null,
-                isSelected: selectedTransitionId == null,
-                onTap: () => onSelect(null),
-              );
-            }
-            final preset = transitionPresets[index - 1];
-            return TransitionPreviewTile(
-              preset: preset,
-              isSelected: selectedTransitionId == preset.id,
-              onTap: () => onSelect(preset.id),
-            );
-          },
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white70, size: 20),
+                  tooltip: 'إغلاق',
+                  onPressed: () => Navigator.of(context).maybePop(),
+                ),
+              ],
+            ),
+            Expanded(
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                itemCount: transitionPresets.length + 1,
+                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                itemBuilder: (context, index) {
+                  if (index == 0) {
+                    return TransitionPreviewTile(
+                      preset: null,
+                      isSelected: selectedTransitionId == null,
+                      onTap: () => onSelect(null),
+                    );
+                  }
+                  final preset = transitionPresets[index - 1];
+                  return TransitionPreviewTile(
+                    preset: preset,
+                    isSelected: selectedTransitionId == preset.id,
+                    onTap: () => onSelect(preset.id),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );

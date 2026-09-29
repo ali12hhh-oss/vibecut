@@ -1,4 +1,7 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:typed_data';
+import 'dart:ui' as ui;
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../core/engine_timeline.dart';
 import '../controllers/editor_cubit.dart';
@@ -19,7 +22,33 @@ class EditorScreen extends StatefulWidget {
 }
 
 class _EditorScreenState extends State<EditorScreen> {
+  final GlobalKey _previewBoundaryKey = GlobalKey();
+
+  /// يلتقط صورة ثابتة للإطار الحالي المعروض في المعاينة، لاستخدامها كمرجع للفلاتر بدلاً من تكرار Texture الفيديو
+  Future<Uint8List?> _captureCurrentFrame() async {
+    try {
+      final boundary =
+          _previewBoundaryKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) return null;
+      final image = await boundary.toImage(pixelRatio: 1.0);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      return byteData?.buffer.asUint8List();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// يوقف التشغيل قبل فتح أي لوحة أدوات، لضمان حالة مستقرة ومعروفة للفيديو
+  void _pausePlaybackIfNeeded(EditorCubit cubit) {
+    if (cubit.state.isPlaying) {
+      cubit.togglePlay();
+    }
+  }
+
   Future<void> _promptAddText(BuildContext context) async {
+    final cubit = context.read<EditorCubit>();
+    _pausePlaybackIfNeeded(cubit);
+
     final controller = TextEditingController();
     final text = await showDialog<String>(
       context: context,
@@ -41,11 +70,13 @@ class _EditorScreenState extends State<EditorScreen> {
     );
 
     if (!context.mounted) return;
-    context.read<EditorCubit>().addTextClip(text.trim(), styleId: styleId);
+    cubit.addTextClip(text.trim(), styleId: styleId);
   }
 
   Future<void> _openFilterPanel(BuildContext context) async {
     final cubit = context.read<EditorCubit>();
+    _pausePlaybackIfNeeded(cubit);
+
     final state = cubit.state;
     final activeClip = state.selectedClipId != null
         ? cubit.timeline.findClip(state.selectedClipId!)
@@ -58,11 +89,14 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
+    final frameBytes = await _captureCurrentFrame();
+    if (!context.mounted) return;
+
     await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (ctx) => FilterPanel(
-        controller: cubit.activeController,
+        imageBytes: frameBytes,
         selectedFilterId: activeClip.filterId,
         onSelect: (id) => cubit.applyFilterToActiveOrSelectedClip(id),
       ),
@@ -71,6 +105,8 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Future<void> _openTransitionPanel(BuildContext context) async {
     final cubit = context.read<EditorCubit>();
+    _pausePlaybackIfNeeded(cubit);
+
     final id = cubit.state.selectedClipId;
     if (id == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -102,6 +138,8 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Future<void> _openStickerPanel(BuildContext context) async {
     final cubit = context.read<EditorCubit>();
+    _pausePlaybackIfNeeded(cubit);
+
     await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -111,6 +149,8 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Future<void> _openSpeedPanel(BuildContext context) async {
     final cubit = context.read<EditorCubit>();
+    _pausePlaybackIfNeeded(cubit);
+
     final id = cubit.state.selectedClipId;
     if (id == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -140,6 +180,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Future<void> _handleExport(BuildContext context) async {
     final cubit = context.read<EditorCubit>();
+    _pausePlaybackIfNeeded(cubit);
     await cubit.exportVideo();
     if (!context.mounted) return;
     final s = cubit.state;
@@ -161,7 +202,12 @@ class _EditorScreenState extends State<EditorScreen> {
 
             return Column(
               children: [
-                const Expanded(child: PreviewPlayer()),
+                Expanded(
+                  child: RepaintBoundary(
+                    key: _previewBoundaryKey,
+                    child: const PreviewPlayer(),
+                  ),
+                ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   child: Row(
