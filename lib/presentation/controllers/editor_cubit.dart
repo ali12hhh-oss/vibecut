@@ -1,5 +1,6 @@
 ﻿import 'dart:async';
 import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
@@ -138,6 +139,32 @@ class EditorCubit extends Cubit<EditorState> {
     await probe.dispose();
 
     timeline.addVideoClip(path: picked.path, sourceDuration: duration);
+    _bump();
+  }
+
+  /// اختيار ملف صوتي حقيقي من الجهاز وإضافته لمسار الصوت
+  Future<void> pickAndAddAudio() async {
+    final result = await FilePicker.platform.pickFiles(type: FileType.audio);
+    final path = result?.files.single.path;
+    if (path == null) return;
+
+    double duration = 5.0;
+    final probe = VideoPlayerController.file(File(path));
+    try {
+      await probe.initialize();
+      duration = probe.value.duration.inMilliseconds / 1000.0;
+    } catch (_) {
+      // بعض تنسيقات الصوت قد لا تُهيأ عبر video_player، نستخدم مدة افتراضية عندئذ
+    } finally {
+      await probe.dispose();
+    }
+
+    final endOfTimeline = timeline.totalDuration;
+    timeline.addAudioClip(
+      path: path,
+      sourceDuration: duration,
+      startOnTrack: state.position.clamp(0.0, endOfTimeline),
+    );
     _bump();
   }
 

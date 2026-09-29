@@ -178,6 +178,7 @@ class _EditorScreenState extends State<EditorScreen> {
                 EditorToolbar(
                   hasSelection: state.selectedClipId != null,
                   onAddVideo: cubit.pickAndAddVideo,
+                  onAddAudio: cubit.pickAndAddAudio,
                   onSplit: cubit.splitSelectedClipAtPlayhead,
                   onDelete: cubit.deleteSelectedClip,
                   onAddText: () => _promptAddText(context),

@@ -25,6 +25,9 @@ class TimelineClip {
   // معرف الانتقال من هذا المقطع إلى المقطع التالي له في نفس المسار
   String? transitionOutId;
 
+  // مستوى الصوت (لمقاطع النوع audio)
+  double volume;
+
   TimelineClip({
     required this.id,
     required this.type,
@@ -39,6 +42,7 @@ class TimelineClip {
     this.textStyleId,
     this.filterId,
     this.transitionOutId,
+    this.volume = 1.0,
   });
 
   double get duration => (trimEnd - trimStart).clamp(0.0, sourceDuration);
@@ -92,6 +96,25 @@ class EngineTimeline {
       trimStart: 0.0,
       trimEnd: sourceDuration,
       startOnTrack: track.trackDuration,
+    );
+    track.clips.add(clip);
+    return clip;
+  }
+
+  TimelineClip addAudioClip({
+    required String path,
+    required double sourceDuration,
+    double? startOnTrack,
+  }) {
+    final track = trackOfType(ClipType.audio);
+    final clip = TimelineClip(
+      id: _newId(),
+      type: ClipType.audio,
+      sourcePath: path,
+      sourceDuration: sourceDuration,
+      trimStart: 0.0,
+      trimEnd: sourceDuration,
+      startOnTrack: startOnTrack ?? track.trackDuration,
     );
     track.clips.add(clip);
     return clip;
@@ -187,6 +210,7 @@ class EngineTimeline {
       textStyleId: clip.textStyleId,
       filterId: clip.filterId,
       transitionOutId: clip.transitionOutId,
+      volume: clip.volume,
     );
 
     clip.trimEnd = splitSourcePoint;

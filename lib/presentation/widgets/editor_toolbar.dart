@@ -3,6 +3,7 @@
 /// شريط أدوات سفلي بأيقونات فقط (بدون نصوص ظاهرة)، مع تلميح عند الضغط المطول
 class EditorToolbar extends StatelessWidget {
   final VoidCallback onAddVideo;
+  final VoidCallback onAddAudio;
   final VoidCallback onSplit;
   final VoidCallback onDelete;
   final VoidCallback onAddText;
@@ -15,6 +16,7 @@ class EditorToolbar extends StatelessWidget {
   const EditorToolbar({
     super.key,
     required this.onAddVideo,
+    required this.onAddAudio,
     required this.onSplit,
     required this.onDelete,
     required this.onAddText,
@@ -39,6 +41,11 @@ class EditorToolbar extends StatelessWidget {
               icon: const Icon(Icons.video_library, color: Colors.white),
               tooltip: 'إضافة فيديو',
               onPressed: onAddVideo,
+            ),
+            IconButton(
+              icon: const Icon(Icons.music_note, color: Colors.white),
+              tooltip: 'إضافة صوت',
+              onPressed: onAddAudio,
             ),
             IconButton(
               icon: Icon(Icons.content_cut, color: hasSelection ? Colors.white : Colors.white24),

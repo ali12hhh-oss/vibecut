@@ -9,7 +9,7 @@ import 'models/text_style_preset.dart';
 import 'models/transition_type.dart';
 import 'models/video_filter.dart';
 
-/// ينفذ خط أنابيب التصدير الكامل: قص المقاطع (مع الفلتر) → دمجها (مع الانتقالات) → تركيب النصوص → تركيب الملصقات
+/// ينفذ خط أنابيب التصدير الكامل: قص → دمج/انتقالات → نصوص → ملصقات → مزج الصوت الإضافي
 class EngineProcessor {
   final EngineCommand _command = EngineCommand();
   final EngineText _engineText = EngineText();
@@ -127,6 +127,40 @@ class EngineProcessor {
         }
       } catch (_) {
         // إن فشلت مرحلة الملصقات، نُبقي على الفيديو بدونها بدلاً من إفشال التصدير بالكامل
+      }
+    }
+
+    final audioTrack = timeline.trackOfType(ClipType.audio);
+    if (audioTrack.clips.isNotEmpty) {
+      try {
+        final audioClips = audioTrack.clips.where((c) => c.sourcePath != null).toList();
+        if (audioClips.isNotEmpty) {
+          final inputsArgs = audioClips.map((c) => '-i "${c.sourcePath}"').join(' ');
+          final buffer = StringBuffer();
+          final mixLabels = <String>['0:a'];
+          for (int i = 0; i < audioClips.length; i++) {
+            final clip = audioClips[i];
+            final delayMs = (clip.startOnTrack * 1000).round();
+            final label = 'aud$i';
+            buffer.write(
+              '[${i + 1}:a]atrim=start=${clip.trimStart}:end=${clip.trimEnd},asetpts=PTS-STARTPTS,'
+              'volume=${clip.volume},adelay=$delayMs|$delayMs[$label];',
+            );
+            mixLabels.add(label);
+          }
+          final mixInputsLabel = mixLabels.map((l) => '[$l]').join();
+          buffer.write('$mixInputsLabel' 'amix=inputs=${mixLabels.length}:duration=longest:dropout_transition=0[aout]');
+
+          final withAudioPath = '${workDir.path}/with_audio.mp4';
+          final audioMixCmd = '-i "$finalPath" $inputsArgs -filter_complex "${buffer.toString()}" '
+              '-map 0:v -map "[aout]" -c:v copy -c:a aac -shortest "$withAudioPath"';
+          final ok = await _command.executeCommand(audioMixCmd);
+          if (ok) {
+            finalPath = withAudioPath;
+          }
+        }
+      } catch (_) {
+        // إن فشل مزج الصوت الإضافي، نُبقي على الفيديو بصوته الأصلي فقط
       }
     }
 
