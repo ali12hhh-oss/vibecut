@@ -1,4 +1,5 @@
-﻿import 'package:flutter/painting.dart';
+﻿// ignore: unused_import
+import 'package:flutter/painting.dart';
 
 /// فلتر لون جاهز للمعاينة الحية (مصفوفة ألوان Flutter) وللتصدير النهائي (مرشح FFmpeg مقابل)
 class VideoFilterPreset {
