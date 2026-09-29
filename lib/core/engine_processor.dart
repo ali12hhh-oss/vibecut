@@ -254,12 +254,12 @@ class EngineProcessor {
     final safeText = reshaped.replaceAll("'", "\\'").replaceAll(':', '\\:');
 
     final color = preset.style.color ?? const Color(0xFFFFFFFF);
-    final fontColorHex = '0x${color.value.toRadixString(16).padLeft(8, '0').substring(2)}';
+    final fontColorHex = '0x${color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}';
     final fontSize = (preset.style.fontSize ?? 32).round();
 
     String boxPart = '';
     if (preset.backgroundColor != null) {
-      final bgHex = '0x${preset.backgroundColor!.value.toRadixString(16).padLeft(8, '0').substring(2)}';
+      final bgHex = '0x${preset.backgroundColor!.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}';
       boxPart = 'box=1:boxcolor=$bgHex@0.55:boxborderw=10:';
     }
 
