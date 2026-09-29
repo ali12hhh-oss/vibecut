@@ -7,16 +7,19 @@ enum ClipType { video, audio, text, image, sticker }
 class TimelineClip {
   final String id;
   final ClipType type;
-  final String? sourcePath; // مسار الملف المصدر (فيديو/صوت/صورة)
-  final double sourceDuration; // المدة الكاملة للملف المصدر بالثواني
-  double trimStart; // بداية القص داخل المصدر
-  double trimEnd; // نهاية القص داخل المصدر
-  double startOnTrack; // موضع بداية المقطع على المسار الزمني (بالثواني)
+  final String? sourcePath;
+  final double sourceDuration;
+  double trimStart;
+  double trimEnd;
+  double startOnTrack;
 
   // خصائص النص (لمقاطع النوع text فقط)
   String? text;
   int? textColorValue;
   double? fontSize;
+
+  // معرف الفلتر المطبق (لمقاطع الفيديو، null = الأصلي بلا فلتر)
+  String? filterId;
 
   TimelineClip({
     required this.id,
@@ -29,6 +32,7 @@ class TimelineClip {
     this.text,
     this.textColorValue,
     this.fontSize,
+    this.filterId,
   });
 
   double get duration => (trimEnd - trimStart).clamp(0.0, sourceDuration);
@@ -50,7 +54,7 @@ class TimelineTrack {
   }
 }
 
-/// التايم لاين الكامل للمشروع: يدير مسارات الفيديو/الصوت/النص وكل المقاطع فيها
+/// التايم لاين الكامل للمشروع
 class EngineTimeline {
   final List<TimelineTrack> tracks;
 
@@ -71,7 +75,6 @@ class EngineTimeline {
 
   String _newId() => '${DateTime.now().microsecondsSinceEpoch}_${Random().nextInt(9999)}';
 
-  /// يضيف مقطع فيديو جديد في نهاية مسار الفيديو
   TimelineClip addVideoClip({required String path, required double sourceDuration}) {
     final track = trackOfType(ClipType.video);
     final clip = TimelineClip(
@@ -87,7 +90,6 @@ class EngineTimeline {
     return clip;
   }
 
-  /// يضيف مقطع نص في موضع زمني محدد
   TimelineClip addTextClip({required String text, double duration = 3.0, double? startOnTrack}) {
     final track = trackOfType(ClipType.text);
     final clip = TimelineClip(
@@ -110,13 +112,21 @@ class EngineTimeline {
     return null;
   }
 
+  TimelineClip? findClip(String clipId) {
+    for (final track in tracks) {
+      for (final clip in track.clips) {
+        if (clip.id == clipId) return clip;
+      }
+    }
+    return null;
+  }
+
   void removeClip(String clipId) {
     for (final track in tracks) {
       track.clips.removeWhere((c) => c.id == clipId);
     }
   }
 
-  /// يقسم مقطعاً إلى قسمين عند موضع زمني مطلق على المسار
   TimelineClip? splitClip(String clipId, double atTimelinePosition) {
     final track = trackOfClip(clipId);
     if (track == null) return null;
@@ -125,7 +135,7 @@ class EngineTimeline {
     final clip = track.clips[index];
 
     if (atTimelinePosition <= clip.startOnTrack || atTimelinePosition >= clip.endOnTrack) {
-      return null; // نقطة القص خارج حدود المقطع
+      return null;
     }
 
     final splitOffset = atTimelinePosition - clip.startOnTrack;
@@ -142,6 +152,7 @@ class EngineTimeline {
       text: clip.text,
       textColorValue: clip.textColorValue,
       fontSize: clip.fontSize,
+      filterId: clip.filterId,
     );
 
     clip.trimEnd = splitSourcePoint;
@@ -149,7 +160,6 @@ class EngineTimeline {
     return secondHalf;
   }
 
-  /// يعيد المقطع النشط في مسار معين عند موضع زمني معين
   TimelineClip? activeClipOnTrack(ClipType type, double position) {
     final track = trackOfType(type);
     for (final clip in track.clips) {

@@ -2,6 +2,7 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../controllers/editor_cubit.dart';
 import '../widgets/editor_toolbar.dart';
+import '../widgets/filter_panel.dart';
 import '../widgets/preview_player.dart';
 import '../widgets/timeline_view.dart';
 
@@ -29,6 +30,31 @@ class _EditorScreenState extends State<EditorScreen> {
     if (result != null && result.trim().isNotEmpty && context.mounted) {
       context.read<EditorCubit>().addTextClip(result.trim());
     }
+  }
+
+  Future<void> _openFilterPanel(BuildContext context) async {
+    final cubit = context.read<EditorCubit>();
+    final state = cubit.state;
+    final activeClip = state.selectedClipId != null
+        ? cubit.timeline.findClip(state.selectedClipId!)
+        : cubit.timeline.activeClipOnTrack(ClipType.video, state.position);
+
+    if (activeClip == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('أضف فيديو أولاً لتطبيق الفلاتر')),
+      );
+      return;
+    }
+
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => FilterPanel(
+        controller: cubit.activeController,
+        selectedFilterId: activeClip.filterId,
+        onSelect: (id) => cubit.applyFilterToActiveOrSelectedClip(id),
+      ),
+    );
   }
 
   String _formatTime(double seconds) {
@@ -61,13 +87,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
             return Column(
               children: [
-                Expanded(
-                  child: PreviewPlayer(
-                    timeline: timeline,
-                    position: state.position,
-                    isPlaying: state.isPlaying,
-                  ),
-                ),
+                const Expanded(child: PreviewPlayer()),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   child: Row(
@@ -110,6 +130,7 @@ class _EditorScreenState extends State<EditorScreen> {
                   onSplit: cubit.splitSelectedClipAtPlayhead,
                   onDelete: cubit.deleteSelectedClip,
                   onAddText: () => _promptAddText(context),
+                  onFilters: () => _openFilterPanel(context),
                   onExport: () => _handleExport(context),
                 ),
               ],

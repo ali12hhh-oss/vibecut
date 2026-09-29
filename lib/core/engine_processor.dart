@@ -4,8 +4,9 @@ import 'package:path_provider/path_provider.dart';
 import 'engine_command.dart';
 import 'engine_text.dart';
 import 'engine_timeline.dart';
+import 'models/video_filter.dart';
 
-/// ينفذ خط أنابيب التصدير الكامل: قص كل مقطع ثم دمجها ثم تركيب النصوص
+/// ينفذ خط أنابيب التصدير الكامل: قص كل مقطع (مع فلتره إن وجد) ثم دمجها ثم تركيب النصوص
 class EngineProcessor {
   final EngineCommand _command = EngineCommand();
   final EngineText _engineText = EngineText();
@@ -25,8 +26,17 @@ class EngineProcessor {
       final clip = videoTrack.clips[i];
       if (clip.sourcePath == null) continue;
       final outPath = '${workDir.path}/part_$i.mp4';
+
+      final preset = clip.filterId != null
+          ? videoFilterPresets.firstWhere(
+              (f) => f.id == clip.filterId,
+              orElse: () => videoFilterPresets.first,
+            )
+          : null;
+      final filterArg = (preset?.ffmpegFilter != null) ? '-vf "${preset!.ffmpegFilter}" ' : '';
+
       final trimCmd = '-i "${clip.sourcePath}" -ss ${clip.trimStart} -t ${clip.duration} '
-          '-c:v libx264 -preset veryfast -c:a aac -avoid_negative_ts make_zero "$outPath"';
+          '$filterArg-c:v libx264 -preset veryfast -c:a aac -avoid_negative_ts make_zero "$outPath"';
       final ok = await _command.executeCommand(trimCmd);
       if (!ok) {
         throw Exception('فشل قص المقطع رقم ${i + 1}');
@@ -83,7 +93,6 @@ class EngineProcessor {
     return finalOutput;
   }
 
-  /// يستخرج خطاً يدعم العربية من الأصول إلى ملف حقيقي يستطيع FFmpeg قراءته
   Future<String> _extractFont(String workDirPath) async {
     final fontData = await rootBundle.load('assets/core/fonts/Cairo-Regular.ttf');
     final fontFile = File('$workDirPath/Cairo-Regular.ttf');

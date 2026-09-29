@@ -6,6 +6,7 @@ class EditorToolbar extends StatelessWidget {
   final VoidCallback onSplit;
   final VoidCallback onDelete;
   final VoidCallback onAddText;
+  final VoidCallback onFilters;
   final VoidCallback onExport;
   final bool hasSelection;
 
@@ -15,6 +16,7 @@ class EditorToolbar extends StatelessWidget {
     required this.onSplit,
     required this.onDelete,
     required this.onAddText,
+    required this.onFilters,
     required this.onExport,
     required this.hasSelection,
   });
@@ -41,6 +43,11 @@ class EditorToolbar extends StatelessWidget {
             icon: const Icon(Icons.text_fields, color: Colors.white),
             tooltip: 'نص',
             onPressed: onAddText,
+          ),
+          IconButton(
+            icon: const Icon(Icons.tune, color: Colors.white),
+            tooltip: 'فلاتر',
+            onPressed: onFilters,
           ),
           IconButton(
             icon: Icon(Icons.delete_outline, color: hasSelection ? Colors.redAccent : Colors.white24),

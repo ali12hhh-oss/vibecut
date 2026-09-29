@@ -64,6 +64,11 @@ class EditorCubit extends Cubit<EditorState> {
   Timer? _playbackTimer;
   DateTime? _lastTick;
 
+  VideoPlayerController? _activeController;
+  String? _activeControllerClipId;
+
+  VideoPlayerController? get activeController => _activeController;
+
   EditorCubit() : super(EditorState.initial());
 
   void _bump({
@@ -79,6 +84,49 @@ class EditorCubit extends Cubit<EditorState> {
       selectedClipId: selectedClipId,
       clearSelection: clearSelection,
     ));
+    _syncActiveController();
+  }
+
+  /// يزامن متحكم الفيديو النشط مع موضع رأس التشغيل الحالي
+  Future<void> _syncActiveController() async {
+    final clip = timeline.activeClipOnTrack(ClipType.video, state.position);
+
+    if (clip == null || clip.sourcePath == null) {
+      await _activeController?.pause();
+      return;
+    }
+
+    if (clip.id != _activeControllerClipId) {
+      _activeControllerClipId = clip.id;
+      final oldController = _activeController;
+      final newController = VideoPlayerController.file(File(clip.sourcePath!));
+      _activeController = newController;
+      try {
+        await newController.initialize();
+        final offset = (state.position - clip.startOnTrack) + clip.trimStart;
+        await newController.seekTo(Duration(milliseconds: (offset * 1000).round()));
+        if (state.isPlaying) await newController.play();
+      } catch (_) {
+        // تجاهل أخطاء تهيئة الفيديو الفردية
+      }
+      await oldController?.dispose();
+      if (!isClosed) emit(state.copyWith(revision: state.revision + 1));
+    } else {
+      final controller = _activeController;
+      if (controller != null && controller.value.isInitialized) {
+        final offset = (state.position - clip.startOnTrack) + clip.trimStart;
+        final currentMs = controller.value.position.inMilliseconds;
+        final targetMs = (offset * 1000).round();
+        if (!state.isPlaying || (currentMs - targetMs).abs() > 400) {
+          await controller.seekTo(Duration(milliseconds: targetMs));
+        }
+        if (state.isPlaying && !controller.value.isPlaying) {
+          await controller.play();
+        } else if (!state.isPlaying && controller.value.isPlaying) {
+          await controller.pause();
+        }
+      }
+    }
   }
 
   /// اختيار فيديو حقيقي من المعرض وإضافته لمسار الفيديو
@@ -158,6 +206,16 @@ class EditorCubit extends Cubit<EditorState> {
     _bump(clearSelection: true);
   }
 
+  /// يطبق فلتراً على المقطع المحدد، أو على المقطع النشط عند رأس التشغيل إن لم يوجد تحديد
+  void applyFilterToActiveOrSelectedClip(String? filterId) {
+    final clip = state.selectedClipId != null
+        ? timeline.findClip(state.selectedClipId!)
+        : timeline.activeClipOnTrack(ClipType.video, state.position);
+    if (clip == null || clip.type != ClipType.video) return;
+    clip.filterId = filterId;
+    _bump();
+  }
+
   Future<void> exportVideo() async {
     emit(state.copyWith(exportStatus: ExportStatus.exporting));
     try {
@@ -171,6 +229,7 @@ class EditorCubit extends Cubit<EditorState> {
   @override
   Future<void> close() {
     _playbackTimer?.cancel();
+    _activeController?.dispose();
     return super.close();
   }
 }
