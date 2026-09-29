@@ -32,6 +32,8 @@ class TimelineView extends StatelessWidget {
       case ClipType.image:
       case ClipType.sticker:
         return const Color(0xFFC24DFF);
+      case ClipType.pip:
+        return const Color(0xFFFF6B6B);
     }
   }
 
