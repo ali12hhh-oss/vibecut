@@ -96,6 +96,9 @@ class EditorCubit extends Cubit<EditorState> {
       return;
     }
 
+    // موضع المصدر المقابل لموضع التايم لاين الحالي، مع مراعاة السرعة
+    final sourceOffset = clip.trimStart + (state.position - clip.startOnTrack) * clip.speed;
+
     if (clip.id != _activeControllerClipId) {
       _activeControllerClipId = clip.id;
       final oldController = _activeController;
@@ -103,8 +106,8 @@ class EditorCubit extends Cubit<EditorState> {
       _activeController = newController;
       try {
         await newController.initialize();
-        final offset = (state.position - clip.startOnTrack) + clip.trimStart;
-        await newController.seekTo(Duration(milliseconds: (offset * 1000).round()));
+        await newController.setPlaybackSpeed(clip.speed);
+        await newController.seekTo(Duration(milliseconds: (sourceOffset * 1000).round()));
         if (state.isPlaying) await newController.play();
       } catch (_) {
         // تجاهل أخطاء تهيئة الفيديو الفردية
@@ -114,9 +117,11 @@ class EditorCubit extends Cubit<EditorState> {
     } else {
       final controller = _activeController;
       if (controller != null && controller.value.isInitialized) {
-        final offset = (state.position - clip.startOnTrack) + clip.trimStart;
+        if (controller.value.playbackSpeed != clip.speed) {
+          await controller.setPlaybackSpeed(clip.speed);
+        }
         final currentMs = controller.value.position.inMilliseconds;
-        final targetMs = (offset * 1000).round();
+        final targetMs = (sourceOffset * 1000).round();
         if (!state.isPlaying || (currentMs - targetMs).abs() > 400) {
           await controller.seekTo(Duration(milliseconds: targetMs));
         }
@@ -142,7 +147,6 @@ class EditorCubit extends Cubit<EditorState> {
     _bump();
   }
 
-  /// اختيار ملف صوتي حقيقي من الجهاز وإضافته لمسار الصوت
   Future<void> pickAndAddAudio() async {
     final result = await FilePicker.platform.pickFiles(type: FileType.audio);
     final path = result?.files.single.path;
@@ -238,7 +242,12 @@ class EditorCubit extends Cubit<EditorState> {
   void deleteSelectedClip() {
     final id = state.selectedClipId;
     if (id == null) return;
+    final clip = timeline.findClip(id);
+    final wasVideo = clip?.type == ClipType.video;
     timeline.removeClip(id);
+    if (wasVideo) {
+      timeline.reflowVideoTrack();
+    }
     _bump(clearSelection: true);
   }
 
@@ -257,6 +266,15 @@ class EditorCubit extends Cubit<EditorState> {
     final clip = timeline.findClip(id);
     if (clip == null || clip.type != ClipType.video) return;
     clip.transitionOutId = transitionId;
+    _bump();
+  }
+
+  /// يغيّر سرعة مقطع فيديو ويُعيد ترتيب ما بعده من المقاطع لمطابقة المدة الجديدة
+  void setClipSpeed(String clipId, double speed) {
+    final clip = timeline.findClip(clipId);
+    if (clip == null || clip.type != ClipType.video) return;
+    clip.speed = speed.clamp(0.1, 4.0);
+    timeline.reflowVideoTrack();
     _bump();
   }
 

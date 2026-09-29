@@ -28,6 +28,9 @@ class TimelineClip {
   // مستوى الصوت (لمقاطع النوع audio)
   double volume;
 
+  // معامل السرعة (لمقاطع النوع video فقط؛ 1.0 طبيعي)
+  double speed;
+
   TimelineClip({
     required this.id,
     required this.type,
@@ -43,9 +46,14 @@ class TimelineClip {
     this.filterId,
     this.transitionOutId,
     this.volume = 1.0,
+    this.speed = 1.0,
   });
 
-  double get duration => (trimEnd - trimStart).clamp(0.0, sourceDuration);
+  /// طول المقطع في المصدر قبل تطبيق السرعة (ما يُقص فعلياً من الملف الأصلي)
+  double get sourceSpan => (trimEnd - trimStart).clamp(0.0, sourceDuration);
+
+  /// طول المقطع على التايم لاين بعد تطبيق السرعة
+  double get duration => sourceSpan / speed;
   double get endOnTrack => startOnTrack + duration;
 }
 
@@ -193,8 +201,9 @@ class EngineTimeline {
       return null;
     }
 
-    final splitOffset = atTimelinePosition - clip.startOnTrack;
-    final splitSourcePoint = clip.trimStart + splitOffset;
+    // المقدار الزمني على التايم لاين يُحوّل إلى مقدار في المصدر مراعاة للسرعة
+    final splitOffsetOnTrack = atTimelinePosition - clip.startOnTrack;
+    final splitSourcePoint = clip.trimStart + splitOffsetOnTrack * clip.speed;
 
     final secondHalf = TimelineClip(
       id: _newId(),
@@ -211,6 +220,7 @@ class EngineTimeline {
       filterId: clip.filterId,
       transitionOutId: clip.transitionOutId,
       volume: clip.volume,
+      speed: clip.speed,
     );
 
     clip.trimEnd = splitSourcePoint;
@@ -227,5 +237,15 @@ class EngineTimeline {
       }
     }
     return null;
+  }
+
+  /// يعيد ترتيب مواضع مقاطع مسار الفيديو لتبقى متتابعة بلا فراغات، يُستدعى بعد أي حذف أو تغيير في المدة (السرعة)
+  void reflowVideoTrack() {
+    final track = trackOfType(ClipType.video);
+    double cursor = 0.0;
+    for (final clip in track.clips) {
+      clip.startOnTrack = cursor;
+      cursor += clip.duration;
+    }
   }
 }

@@ -5,6 +5,7 @@ import '../controllers/editor_cubit.dart';
 import '../widgets/editor_toolbar.dart';
 import '../widgets/filter_panel.dart';
 import '../widgets/preview_player.dart';
+import '../widgets/speed_panel.dart';
 import '../widgets/sticker_panel.dart';
 import '../widgets/text_style_panel.dart';
 import '../widgets/timeline_view.dart';
@@ -108,6 +109,28 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
+  Future<void> _openSpeedPanel(BuildContext context) async {
+    final cubit = context.read<EditorCubit>();
+    final id = cubit.state.selectedClipId;
+    if (id == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('حدد مقطع فيديو أولاً لتغيير سرعته')),
+      );
+      return;
+    }
+    final clip = cubit.timeline.findClip(id);
+    if (clip == null || clip.type != ClipType.video) return;
+
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => SpeedPanel(
+        initialSpeed: clip.speed,
+        onChanged: (v) => cubit.setClipSpeed(id, v),
+      ),
+    );
+  }
+
   String _formatTime(double seconds) {
     final d = Duration(milliseconds: (seconds * 1000).round());
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
@@ -185,6 +208,7 @@ class _EditorScreenState extends State<EditorScreen> {
                   onFilters: () => _openFilterPanel(context),
                   onTransitions: () => _openTransitionPanel(context),
                   onStickers: () => _openStickerPanel(context),
+                  onSpeed: () => _openSpeedPanel(context),
                   onExport: () => _handleExport(context),
                 ),
               ],

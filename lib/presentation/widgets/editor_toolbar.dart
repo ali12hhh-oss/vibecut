@@ -10,6 +10,7 @@ class EditorToolbar extends StatelessWidget {
   final VoidCallback onFilters;
   final VoidCallback onTransitions;
   final VoidCallback onStickers;
+  final VoidCallback onSpeed;
   final VoidCallback onExport;
   final bool hasSelection;
 
@@ -23,6 +24,7 @@ class EditorToolbar extends StatelessWidget {
     required this.onFilters,
     required this.onTransitions,
     required this.onStickers,
+    required this.onSpeed,
     required this.onExport,
     required this.hasSelection,
   });
@@ -51,6 +53,11 @@ class EditorToolbar extends StatelessWidget {
               icon: Icon(Icons.content_cut, color: hasSelection ? Colors.white : Colors.white24),
               tooltip: 'قص',
               onPressed: hasSelection ? onSplit : null,
+            ),
+            IconButton(
+              icon: Icon(Icons.speed, color: hasSelection ? Colors.white : Colors.white24),
+              tooltip: 'السرعة',
+              onPressed: hasSelection ? onSpeed : null,
             ),
             IconButton(
               icon: const Icon(Icons.text_fields, color: Colors.white),

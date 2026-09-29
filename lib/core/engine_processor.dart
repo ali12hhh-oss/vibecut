@@ -9,7 +9,7 @@ import 'models/text_style_preset.dart';
 import 'models/transition_type.dart';
 import 'models/video_filter.dart';
 
-/// ينفذ خط أنابيب التصدير الكامل: قص → دمج/انتقالات → نصوص → ملصقات → مزج الصوت الإضافي
+/// ينفذ خط أنابيب التصدير الكامل: قص (مع الفلتر والسرعة) → دمج/انتقالات → نصوص → ملصقات → مزج الصوت الإضافي
 class EngineProcessor {
   final EngineCommand _command = EngineCommand();
   final EngineText _engineText = EngineText();
@@ -36,10 +36,18 @@ class EngineProcessor {
               orElse: () => videoFilterPresets.first,
             )
           : null;
-      final filterArg = (preset?.ffmpegFilter != null) ? '-vf "${preset!.ffmpegFilter}" ' : '';
 
-      final trimCmd = '-i "${clip.sourcePath}" -ss ${clip.trimStart} -t ${clip.duration} '
-          '$filterArg-c:v libx264 -preset veryfast -c:a aac -avoid_negative_ts make_zero "$outPath"';
+      final vfParts = <String>[];
+      if (preset?.ffmpegFilter != null) vfParts.add(preset!.ffmpegFilter!);
+      if (clip.speed != 1.0) vfParts.add('setpts=${(1 / clip.speed).toStringAsFixed(6)}*PTS');
+      final vfArg = vfParts.isNotEmpty ? '-vf "${vfParts.join(',')}" ' : '';
+
+      final afParts = <String>[];
+      if (clip.speed != 1.0) afParts.addAll(_atempoChain(clip.speed));
+      final afArg = afParts.isNotEmpty ? '-af "${afParts.join(',')}" ' : '';
+
+      final trimCmd = '-i "${clip.sourcePath}" -ss ${clip.trimStart} -t ${clip.sourceSpan} '
+          '$vfArg$afArg-c:v libx264 -preset veryfast -c:a aac -avoid_negative_ts make_zero "$outPath"';
       final ok = await _command.executeCommand(trimCmd);
       if (!ok) {
         throw Exception('فشل قص المقطع رقم ${i + 1}');
@@ -173,6 +181,23 @@ class EngineProcessor {
     return finalOutput;
   }
 
+  /// يفكك عامل السرعة إلى سلسلة atempo صالحة، لأن المرشح الواحد محدود بمدى 0.5-2.0
+  List<String> _atempoChain(double speed) {
+    final filters = <String>[];
+    double remaining = speed;
+    if (remaining <= 0) return ['atempo=1.0'];
+    while (remaining > 2.0) {
+      filters.add('atempo=2.0');
+      remaining /= 2.0;
+    }
+    while (remaining < 0.5) {
+      filters.add('atempo=0.5');
+      remaining /= 0.5;
+    }
+    filters.add('atempo=${remaining.toStringAsFixed(3)}');
+    return filters;
+  }
+
   String _drawTextFilterFor(TimelineClip clip, String fontPath) {
     final preset = textStylePresets.firstWhere(
       (s) => s.id == clip.textStyleId,
@@ -196,7 +221,6 @@ class EngineProcessor {
         "enable='between(t,${clip.startOnTrack},${clip.endOnTrack})'";
   }
 
-  /// يدمج المقاطع المقصوصة مع انتقالات xfade حقيقية بين المقاطع التي طلب لها المستخدم ذلك
   Future<String> _mergeWithTransitions(
     List<TimelineClip> clips,
     List<String> trimmedPaths,
