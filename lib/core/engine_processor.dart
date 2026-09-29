@@ -9,7 +9,7 @@ import 'models/text_style_preset.dart';
 import 'models/transition_type.dart';
 import 'models/video_filter.dart';
 
-/// ينفذ خط أنابيب التصدير الكامل: قص (مع الفلتر والسرعة) → دمج/انتقالات → نصوص → ملصقات → مزج الصوت الإضافي
+/// ينفذ خط أنابيب التصدير الكامل: قص (فلتر/تمويه/سرعة) → دمج/انتقالات → نصوص → طبقات الصور/الملصقات → PIP → مزج الصوت
 class EngineProcessor {
   final EngineCommand _command = EngineCommand();
   final EngineText _engineText = EngineText();
@@ -39,6 +39,7 @@ class EngineProcessor {
 
       final vfParts = <String>[];
       if (preset?.ffmpegFilter != null) vfParts.add(preset!.ffmpegFilter!);
+      if (clip.blurAmount > 0) vfParts.add('boxblur=${clip.blurAmount.toStringAsFixed(1)}:1');
       if (clip.speed != 1.0) vfParts.add('setpts=${(1 / clip.speed).toStringAsFixed(6)}*PTS');
       final vfArg = vfParts.isNotEmpty ? '-vf "${vfParts.join(',')}" ' : '';
 
@@ -98,25 +99,33 @@ class EngineProcessor {
       }
     }
 
-    final stickerTrack = timeline.trackOfType(ClipType.sticker);
-    if (stickerTrack.clips.isNotEmpty) {
+    final overlayImageClips = [
+      ...timeline.trackOfType(ClipType.sticker).clips,
+      ...timeline.trackOfType(ClipType.image).clips,
+    ];
+    if (overlayImageClips.isNotEmpty) {
       try {
-        final assetPaths = <String>[];
-        final stickerClips = <TimelineClip>[];
-        for (final clip in stickerTrack.clips) {
+        final resolvedPaths = <String>[];
+        final clipsForOverlay = <TimelineClip>[];
+        for (final clip in overlayImageClips) {
           if (clip.sourcePath == null) continue;
-          assetPaths.add(await _extractAsset(clip.sourcePath!, workDir.path));
-          stickerClips.add(clip);
+          resolvedPaths.add(await _resolveInputPath(clip.sourcePath!, workDir.path));
+          clipsForOverlay.add(clip);
         }
-        if (assetPaths.isNotEmpty) {
-          final inputsArgs = assetPaths.map((p) => '-i "$p"').join(' ');
+        if (resolvedPaths.isNotEmpty) {
+          final inputsArgs = resolvedPaths.map((p) => '-i "$p"').join(' ');
           final buffer = StringBuffer();
           String prevLabel = '0:v';
-          for (int i = 0; i < stickerClips.length; i++) {
-            final clip = stickerClips[i];
-            final outLabel = (i == stickerClips.length - 1) ? 'vout' : 's$i';
+          for (int i = 0; i < clipsForOverlay.length; i++) {
+            final clip = clipsForOverlay[i];
+            final opacity = clip.overlayOpacity.clamp(0.0, 1.0);
+            final scaledLabel = 'ov$i';
             buffer.write(
-              '[$prevLabel][${i + 1}:v]overlay=x=main_w-overlay_w-30:y=30:'
+              '[${i + 1}:v]format=rgba,colorchannelmixer=aa=${opacity.toStringAsFixed(2)}[$scaledLabel];',
+            );
+            final outLabel = (i == clipsForOverlay.length - 1) ? 'vout' : 's$i';
+            buffer.write(
+              '[$prevLabel][$scaledLabel]overlay=x=main_w-overlay_w-30:y=30:'
               "enable='between(t,${clip.startOnTrack},${clip.endOnTrack})'[$outLabel];",
             );
             prevLabel = outLabel;
@@ -125,16 +134,55 @@ class EngineProcessor {
           if (filterComplex.endsWith(';')) {
             filterComplex = filterComplex.substring(0, filterComplex.length - 1);
           }
-          final withStickersPath = '${workDir.path}/with_stickers.mp4';
-          final stickerCmd = '-i "$finalPath" $inputsArgs -filter_complex "$filterComplex" '
-              '-map "[vout]" -map 0:a? -c:a copy "$withStickersPath"';
-          final stickerOk = await _command.executeCommand(stickerCmd);
-          if (stickerOk) {
-            finalPath = withStickersPath;
+          final withOverlaysPath = '${workDir.path}/with_overlays.mp4';
+          final overlayCmd = '-i "$finalPath" $inputsArgs -filter_complex "$filterComplex" '
+              '-map "[vout]" -map 0:a? -c:a copy "$withOverlaysPath"';
+          final overlayOk = await _command.executeCommand(overlayCmd);
+          if (overlayOk) {
+            finalPath = withOverlaysPath;
           }
         }
       } catch (_) {
-        // إن فشلت مرحلة الملصقات، نُبقي على الفيديو بدونها بدلاً من إفشال التصدير بالكامل
+        // إن فشلت مرحلة الملصقات/الصور، نُبقي على الفيديو بدونها بدلاً من إفشال التصدير بالكامل
+      }
+    }
+
+    final pipTrack = timeline.trackOfType(ClipType.pip);
+    if (pipTrack.clips.isNotEmpty) {
+      try {
+        final pipClips = pipTrack.clips.where((c) => c.sourcePath != null).toList();
+        if (pipClips.isNotEmpty) {
+          final inputsArgs = pipClips.map((c) => '-i "${c.sourcePath}"').join(' ');
+          final buffer = StringBuffer();
+          String prevLabel = '0:v';
+          for (int i = 0; i < pipClips.length; i++) {
+            final clip = pipClips[i];
+            final opacity = clip.overlayOpacity.clamp(0.0, 1.0);
+            final scaledLabel = 'pip$i';
+            buffer.write(
+              '[${i + 1}:v]scale=iw*0.35:-1,format=rgba,colorchannelmixer=aa=${opacity.toStringAsFixed(2)}[$scaledLabel];',
+            );
+            final outLabel = (i == pipClips.length - 1) ? 'vout' : 'p$i';
+            buffer.write(
+              '[$prevLabel][$scaledLabel]overlay=x=main_w-overlay_w-20:y=main_h-overlay_h-20:'
+              "enable='between(t,${clip.startOnTrack},${clip.endOnTrack})'[$outLabel];",
+            );
+            prevLabel = outLabel;
+          }
+          var filterComplex = buffer.toString();
+          if (filterComplex.endsWith(';')) {
+            filterComplex = filterComplex.substring(0, filterComplex.length - 1);
+          }
+          final withPipPath = '${workDir.path}/with_pip.mp4';
+          final pipCmd = '-i "$finalPath" $inputsArgs -filter_complex "$filterComplex" '
+              '-map "[vout]" -map 0:a? -c:a copy "$withPipPath"';
+          final pipOk = await _command.executeCommand(pipCmd);
+          if (pipOk) {
+            finalPath = withPipPath;
+          }
+        }
+      } catch (_) {
+        // إن فشلت مرحلة PIP، نُبقي على الفيديو بدونها بدلاً من إفشال التصدير بالكامل
       }
     }
 
@@ -181,7 +229,6 @@ class EngineProcessor {
     return finalOutput;
   }
 
-  /// يفكك عامل السرعة إلى سلسلة atempo صالحة، لأن المرشح الواحد محدود بمدى 0.5-2.0
   List<String> _atempoChain(double speed) {
     final filters = <String>[];
     double remaining = speed;
@@ -299,4 +346,9 @@ class EngineProcessor {
     );
     return file.path;
   }
+
+  /// يحل مسار مدخل إما إلى ملف حقيقي على الجهاز (من المعرض) أو يستخرجه من أصول التطبيق إن كان مسار أصل
+Future<String> _resolveInputPath(String path, String workDirPath) => path.startsWith('assets/')
+    ? EngineProcessor()._extractAsset(path, workDirPath)
+    : Future.value(path);
 }

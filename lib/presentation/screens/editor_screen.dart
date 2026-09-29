@@ -5,8 +5,10 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../core/engine_timeline.dart';
 import '../controllers/editor_cubit.dart';
+import '../widgets/blur_panel.dart';
 import '../widgets/editor_toolbar.dart';
 import '../widgets/filter_panel.dart';
+import '../widgets/opacity_panel.dart';
 import '../widgets/preview_player.dart';
 import '../widgets/speed_panel.dart';
 import '../widgets/sticker_panel.dart';
@@ -24,7 +26,6 @@ class EditorScreen extends StatefulWidget {
 class _EditorScreenState extends State<EditorScreen> {
   final GlobalKey _previewBoundaryKey = GlobalKey();
 
-  /// يلتقط صورة ثابتة للإطار الحالي المعروض في المعاينة، لاستخدامها كمرجع للفلاتر بدلاً من تكرار Texture الفيديو
   Future<Uint8List?> _captureCurrentFrame() async {
     try {
       final boundary =
@@ -38,7 +39,6 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
-  /// يوقف التشغيل قبل فتح أي لوحة أدوات، لضمان حالة مستقرة ومعروفة للفيديو
   void _pausePlaybackIfNeeded(EditorCubit cubit) {
     if (cubit.state.isPlaying) {
       cubit.togglePlay();
@@ -103,6 +103,32 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
+  Future<void> _openBlurPanel(BuildContext context) async {
+    final cubit = context.read<EditorCubit>();
+    _pausePlaybackIfNeeded(cubit);
+
+    final state = cubit.state;
+    final activeClip = state.selectedClipId != null
+        ? cubit.timeline.findClip(state.selectedClipId!)
+        : cubit.timeline.activeClipOnTrack(ClipType.video, state.position);
+
+    if (activeClip == null || activeClip.type != ClipType.video) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('أضف فيديو أو حدده أولاً لتطبيق التمويه')),
+      );
+      return;
+    }
+
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => BlurPanel(
+        initialBlur: activeClip.blurAmount,
+        onChanged: (v) => cubit.setBlurForActiveOrSelectedClip(v),
+      ),
+    );
+  }
+
   Future<void> _openTransitionPanel(BuildContext context) async {
     final cubit = context.read<EditorCubit>();
     _pausePlaybackIfNeeded(cubit);
@@ -145,6 +171,37 @@ class _EditorScreenState extends State<EditorScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => StickerPanel(onSelect: (path) => cubit.addStickerClip(path)),
     );
+  }
+
+  Future<void> _openOpacityPanelFor(BuildContext context, String clipId, double initial) async {
+    if (!context.mounted) return;
+    final cubit = context.read<EditorCubit>();
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => OpacityPanel(
+        initialOpacity: initial,
+        onChanged: (v) => cubit.setOverlayOpacity(clipId, v),
+      ),
+    );
+  }
+
+  Future<void> _pickImageOverlay(BuildContext context) async {
+    final cubit = context.read<EditorCubit>();
+    _pausePlaybackIfNeeded(cubit);
+
+    final clipId = await cubit.pickAndAddImageOverlay();
+    if (clipId == null || !context.mounted) return;
+    await _openOpacityPanelFor(context, clipId, 1.0);
+  }
+
+  Future<void> _pickPipVideo(BuildContext context) async {
+    final cubit = context.read<EditorCubit>();
+    _pausePlaybackIfNeeded(cubit);
+
+    final clipId = await cubit.pickAndAddPipVideo();
+    if (clipId == null || !context.mounted) return;
+    await _openOpacityPanelFor(context, clipId, 1.0);
   }
 
   Future<void> _openSpeedPanel(BuildContext context) async {
@@ -252,8 +309,11 @@ class _EditorScreenState extends State<EditorScreen> {
                   onDelete: cubit.deleteSelectedClip,
                   onAddText: () => _promptAddText(context),
                   onFilters: () => _openFilterPanel(context),
+                  onBlur: () => _openBlurPanel(context),
                   onTransitions: () => _openTransitionPanel(context),
                   onStickers: () => _openStickerPanel(context),
+                  onImageOverlay: () => _pickImageOverlay(context),
+                  onPip: () => _pickPipVideo(context),
                   onSpeed: () => _openSpeedPanel(context),
                   onExport: () => _handleExport(context),
                 ),
