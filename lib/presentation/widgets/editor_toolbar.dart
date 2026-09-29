@@ -8,6 +8,7 @@ class EditorToolbar extends StatelessWidget {
   final VoidCallback onAddText;
   final VoidCallback onFilters;
   final VoidCallback onTransitions;
+  final VoidCallback onStickers;
   final VoidCallback onExport;
   final bool hasSelection;
 
@@ -19,6 +20,7 @@ class EditorToolbar extends StatelessWidget {
     required this.onAddText,
     required this.onFilters,
     required this.onTransitions,
+    required this.onStickers,
     required this.onExport,
     required this.hasSelection,
   });
@@ -47,6 +49,11 @@ class EditorToolbar extends StatelessWidget {
               icon: const Icon(Icons.text_fields, color: Colors.white),
               tooltip: 'نص',
               onPressed: onAddText,
+            ),
+            IconButton(
+              icon: const Icon(Icons.emoji_emotions_outlined, color: Colors.white),
+              tooltip: 'ملصقات',
+              onPressed: onStickers,
             ),
             IconButton(
               icon: const Icon(Icons.tune, color: Colors.white),

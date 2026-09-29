@@ -3,7 +3,7 @@
 /// أنواع المقاطع التي يدعمها المحرر
 enum ClipType { video, audio, text, image, sticker }
 
-/// مقطع واحد على الخط الزمني (فيديو، صوت، نص، صورة...)
+/// مقطع واحد على الخط الزمني (فيديو، صوت، نص، ملصق...)
 class TimelineClip {
   final String id;
   final ClipType type;
@@ -17,11 +17,12 @@ class TimelineClip {
   String? text;
   int? textColorValue;
   double? fontSize;
+  String? textStyleId;
 
   // معرف الفلتر المطبق (لمقاطع الفيديو)
   String? filterId;
 
-  // معرف الانتقال من هذا المقطع إلى المقطع التالي في نفس المسار (null = قطع مباشر)
+  // معرف الانتقال من هذا المقطع إلى المقطع التالي له في نفس المسار
   String? transitionOutId;
 
   TimelineClip({
@@ -35,6 +36,7 @@ class TimelineClip {
     this.text,
     this.textColorValue,
     this.fontSize,
+    this.textStyleId,
     this.filterId,
     this.transitionOutId,
   });
@@ -43,7 +45,7 @@ class TimelineClip {
   double get endOnTrack => startOnTrack + duration;
 }
 
-/// مسار واحد في التايم لاين (فيديو أو صوت أو نص)
+/// مسار واحد في التايم لاين (فيديو أو صوت أو نص أو ملصق)
 class TimelineTrack {
   final String id;
   final ClipType type;
@@ -67,6 +69,7 @@ class EngineTimeline {
           TimelineTrack(id: 'video_main', type: ClipType.video),
           TimelineTrack(id: 'audio_main', type: ClipType.audio),
           TimelineTrack(id: 'text_main', type: ClipType.text),
+          TimelineTrack(id: 'sticker_main', type: ClipType.sticker),
         ];
 
   TimelineTrack trackOfType(ClipType type) =>
@@ -94,7 +97,12 @@ class EngineTimeline {
     return clip;
   }
 
-  TimelineClip addTextClip({required String text, double duration = 3.0, double? startOnTrack}) {
+  TimelineClip addTextClip({
+    required String text,
+    double duration = 3.0,
+    double? startOnTrack,
+    String? styleId,
+  }) {
     final track = trackOfType(ClipType.text);
     final clip = TimelineClip(
       id: _newId(),
@@ -104,6 +112,26 @@ class EngineTimeline {
       trimEnd: duration,
       startOnTrack: startOnTrack ?? 0.0,
       text: text,
+      textStyleId: styleId,
+    );
+    track.clips.add(clip);
+    return clip;
+  }
+
+  TimelineClip addStickerClip({
+    required String assetPath,
+    double duration = 3.0,
+    double? startOnTrack,
+  }) {
+    final track = trackOfType(ClipType.sticker);
+    final clip = TimelineClip(
+      id: _newId(),
+      type: ClipType.sticker,
+      sourcePath: assetPath,
+      sourceDuration: duration,
+      trimStart: 0.0,
+      trimEnd: duration,
+      startOnTrack: startOnTrack ?? 0.0,
     );
     track.clips.add(clip);
     return clip;
@@ -156,12 +184,13 @@ class EngineTimeline {
       text: clip.text,
       textColorValue: clip.textColorValue,
       fontSize: clip.fontSize,
+      textStyleId: clip.textStyleId,
       filterId: clip.filterId,
       transitionOutId: clip.transitionOutId,
     );
 
     clip.trimEnd = splitSourcePoint;
-    clip.transitionOutId = null; // الحد الجديد الناتج عن التقسيم يبدأ كقطع مباشر
+    clip.transitionOutId = null;
     track.clips.insert(index + 1, secondHalf);
     return secondHalf;
   }

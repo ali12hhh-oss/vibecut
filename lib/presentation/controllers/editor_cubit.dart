@@ -141,10 +141,21 @@ class EditorCubit extends Cubit<EditorState> {
     _bump();
   }
 
-  void addTextClip(String text) {
+  void addTextClip(String text, {String? styleId}) {
     final endOfTimeline = timeline.totalDuration;
     timeline.addTextClip(
       text: text,
+      duration: 3.0,
+      startOnTrack: state.position.clamp(0.0, endOfTimeline),
+      styleId: styleId,
+    );
+    _bump();
+  }
+
+  void addStickerClip(String assetPath) {
+    final endOfTimeline = timeline.totalDuration;
+    timeline.addStickerClip(
+      assetPath: assetPath,
       duration: 3.0,
       startOnTrack: state.position.clamp(0.0, endOfTimeline),
     );
@@ -213,7 +224,6 @@ class EditorCubit extends Cubit<EditorState> {
     _bump();
   }
 
-  /// يطبق انتقالاً بين المقطع المحدد والمقطع التالي له في مسار الفيديو
   void applyTransitionAfterSelectedClip(String? transitionId) {
     final id = state.selectedClipId;
     if (id == null) return;

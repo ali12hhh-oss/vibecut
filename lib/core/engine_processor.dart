@@ -1,13 +1,15 @@
 ﻿import 'dart:io';
+import 'package:flutter/material.dart' show Color;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'engine_command.dart';
 import 'engine_text.dart';
 import 'engine_timeline.dart';
+import 'models/text_style_preset.dart';
 import 'models/transition_type.dart';
 import 'models/video_filter.dart';
 
-/// ينفذ خط أنابيب التصدير الكامل: قص كل مقطع (مع فلتره) ثم دمجها (مع انتقالاتها إن وجدت) ثم تركيب النصوص
+/// ينفذ خط أنابيب التصدير الكامل: قص المقاطع (مع الفلتر) → دمجها (مع الانتقالات) → تركيب النصوص → تركيب الملصقات
 class EngineProcessor {
   final EngineCommand _command = EngineCommand();
   final EngineText _engineText = EngineText();
@@ -74,23 +76,57 @@ class EngineProcessor {
 
     if (textTrack.clips.isNotEmpty) {
       try {
-        final fontPath = await _extractFont(workDir.path);
-        final drawTextFilters = textTrack.clips.map((clip) {
-          final reshaped = _engineText.processArabic(clip.text ?? '');
-          final safeText = reshaped.replaceAll("'", "\\'").replaceAll(':', '\\:');
-          return "drawtext=fontfile='$fontPath':text='$safeText':fontcolor=white:fontsize=48:"
-              "x=(w-text_w)/2:y=h-th-80:box=1:boxcolor=black@0.4:boxborderw=10:"
-              "enable='between(t,${clip.startOnTrack},${clip.endOnTrack})'";
-        }).join(',');
+        final fontPath = await _extractAsset('assets/core/fonts/Cairo-Regular.ttf', workDir.path);
+        final drawTextFilters = textTrack.clips.map((clip) => _drawTextFilterFor(clip, fontPath)).join(',');
 
-        final withTextPath = '${workDir.path}/final.mp4';
-        final textCmd = '-i "$mergedPath" -vf "$drawTextFilters" -c:a copy "$withTextPath"';
+        final withTextPath = '${workDir.path}/with_text.mp4';
+        final textCmd = '-i "$finalPath" -vf "$drawTextFilters" -c:a copy "$withTextPath"';
         final textOk = await _command.executeCommand(textCmd);
         if (textOk) {
           finalPath = withTextPath;
         }
       } catch (_) {
         // إن فشلت مرحلة النص، نُبقي على الفيديو المدموج بلا نص بدلاً من إفشال التصدير بالكامل
+      }
+    }
+
+    final stickerTrack = timeline.trackOfType(ClipType.sticker);
+    if (stickerTrack.clips.isNotEmpty) {
+      try {
+        final assetPaths = <String>[];
+        final stickerClips = <TimelineClip>[];
+        for (final clip in stickerTrack.clips) {
+          if (clip.sourcePath == null) continue;
+          assetPaths.add(await _extractAsset(clip.sourcePath!, workDir.path));
+          stickerClips.add(clip);
+        }
+        if (assetPaths.isNotEmpty) {
+          final inputsArgs = assetPaths.map((p) => '-i "$p"').join(' ');
+          final buffer = StringBuffer();
+          String prevLabel = '0:v';
+          for (int i = 0; i < stickerClips.length; i++) {
+            final clip = stickerClips[i];
+            final outLabel = (i == stickerClips.length - 1) ? 'vout' : 's$i';
+            buffer.write(
+              '[$prevLabel][${i + 1}:v]overlay=x=main_w-overlay_w-30:y=30:'
+              "enable='between(t,${clip.startOnTrack},${clip.endOnTrack})'[$outLabel];",
+            );
+            prevLabel = outLabel;
+          }
+          var filterComplex = buffer.toString();
+          if (filterComplex.endsWith(';')) {
+            filterComplex = filterComplex.substring(0, filterComplex.length - 1);
+          }
+          final withStickersPath = '${workDir.path}/with_stickers.mp4';
+          final stickerCmd = '-i "$finalPath" $inputsArgs -filter_complex "$filterComplex" '
+              '-map "[vout]" -map 0:a? -c:a copy "$withStickersPath"';
+          final stickerOk = await _command.executeCommand(stickerCmd);
+          if (stickerOk) {
+            finalPath = withStickersPath;
+          }
+        }
+      } catch (_) {
+        // إن فشلت مرحلة الملصقات، نُبقي على الفيديو بدونها بدلاً من إفشال التصدير بالكامل
       }
     }
 
@@ -101,6 +137,29 @@ class EngineProcessor {
     await File(finalPath).copy(finalOutput);
 
     return finalOutput;
+  }
+
+  String _drawTextFilterFor(TimelineClip clip, String fontPath) {
+    final preset = textStylePresets.firstWhere(
+      (s) => s.id == clip.textStyleId,
+      orElse: () => textStylePresets.first,
+    );
+    final reshaped = _engineText.processArabic(clip.text ?? '');
+    final safeText = reshaped.replaceAll("'", "\\'").replaceAll(':', '\\:');
+
+    final color = preset.style.color ?? const Color(0xFFFFFFFF);
+    final fontColorHex = '0x${color.value.toRadixString(16).padLeft(8, '0').substring(2)}';
+    final fontSize = (preset.style.fontSize ?? 32).round();
+
+    String boxPart = '';
+    if (preset.backgroundColor != null) {
+      final bgHex = '0x${preset.backgroundColor!.value.toRadixString(16).padLeft(8, '0').substring(2)}';
+      boxPart = 'box=1:boxcolor=$bgHex@0.55:boxborderw=10:';
+    }
+
+    return "drawtext=fontfile='$fontPath':text='$safeText':fontcolor=$fontColorHex:fontsize=$fontSize:"
+        "x=(w-text_w)/2:y=h-th-80:$boxPart"
+        "enable='between(t,${clip.startOnTrack},${clip.endOnTrack})'";
   }
 
   /// يدمج المقاطع المقصوصة مع انتقالات xfade حقيقية بين المقاطع التي طلب لها المستخدم ذلك
@@ -154,7 +213,6 @@ class EngineProcessor {
       throw Exception('فشل تركيب الانتقالات بين المقاطع');
     }
 
-    // صوت متسلسل بسيط (بلا انتقالات صوتية في هذا الإصدار الأول)
     final listFile = File('$workDirPath/audio_concat_list.txt');
     final listContent = trimmedPaths.map((p) => "file '$p'").join('\n');
     await listFile.writeAsString(listContent);
@@ -163,7 +221,7 @@ class EngineProcessor {
     final audioOk = await _command.executeCommand(audioCmd);
 
     if (!audioOk || !await File(audioOnlyPath).exists()) {
-      return videoOnlyPath; // نبقي على الفيديو بلا صوت بدلاً من إفشال التصدير بالكامل
+      return videoOnlyPath;
     }
 
     final combinedPath = '$workDirPath/merged.mp4';
@@ -174,12 +232,13 @@ class EngineProcessor {
     return combineOk ? combinedPath : videoOnlyPath;
   }
 
-  Future<String> _extractFont(String workDirPath) async {
-    final fontData = await rootBundle.load('assets/core/fonts/Cairo-Regular.ttf');
-    final fontFile = File('$workDirPath/Cairo-Regular.ttf');
-    await fontFile.writeAsBytes(
-      fontData.buffer.asUint8List(fontData.offsetInBytes, fontData.lengthInBytes),
+  Future<String> _extractAsset(String assetPath, String workDirPath) async {
+    final data = await rootBundle.load(assetPath);
+    final fileName = assetPath.split('/').last;
+    final file = File('$workDirPath/$fileName');
+    await file.writeAsBytes(
+      data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
     );
-    return fontFile.path;
+    return file.path;
   }
 }

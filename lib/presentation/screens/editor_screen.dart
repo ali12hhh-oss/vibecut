@@ -1,10 +1,12 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../controllers/editor_cubit.dart';
 import '../../core/engine_timeline.dart';
+import '../controllers/editor_cubit.dart';
 import '../widgets/editor_toolbar.dart';
 import '../widgets/filter_panel.dart';
 import '../widgets/preview_player.dart';
+import '../widgets/sticker_panel.dart';
+import '../widgets/text_style_panel.dart';
 import '../widgets/timeline_view.dart';
 import '../widgets/transition_panel.dart';
 
@@ -18,20 +20,27 @@ class EditorScreen extends StatefulWidget {
 class _EditorScreenState extends State<EditorScreen> {
   Future<void> _promptAddText(BuildContext context) async {
     final controller = TextEditingController();
-    final result = await showDialog<String>(
+    final text = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('إضافة نص'),
         content: TextField(controller: controller, autofocus: true, textDirection: TextDirection.rtl),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
-          TextButton(onPressed: () => Navigator.pop(ctx, controller.text), child: const Text('إضافة')),
+          TextButton(onPressed: () => Navigator.pop(ctx, controller.text), child: const Text('التالي')),
         ],
       ),
     );
-    if (result != null && result.trim().isNotEmpty && context.mounted) {
-      context.read<EditorCubit>().addTextClip(result.trim());
-    }
+    if (text == null || text.trim().isEmpty || !context.mounted) return;
+
+    final styleId = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => TextStylePanel(sampleText: text.trim()),
+    );
+
+    if (!context.mounted) return;
+    context.read<EditorCubit>().addTextClip(text.trim(), styleId: styleId);
   }
 
   Future<void> _openFilterPanel(BuildContext context) async {
@@ -87,6 +96,15 @@ class _EditorScreenState extends State<EditorScreen> {
         selectedTransitionId: clip.transitionOutId,
         onSelect: (transitionId) => cubit.applyTransitionAfterSelectedClip(transitionId),
       ),
+    );
+  }
+
+  Future<void> _openStickerPanel(BuildContext context) async {
+    final cubit = context.read<EditorCubit>();
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StickerPanel(onSelect: (path) => cubit.addStickerClip(path)),
     );
   }
 
@@ -148,7 +166,7 @@ class _EditorScreenState extends State<EditorScreen> {
                   ),
                 ),
                 SizedBox(
-                  height: TimelineView.trackHeight * 3 + 10,
+                  height: TimelineView.trackHeight * timeline.tracks.length + 10,
                   child: TimelineView(
                     timeline: timeline,
                     position: state.position,
@@ -165,6 +183,7 @@ class _EditorScreenState extends State<EditorScreen> {
                   onAddText: () => _promptAddText(context),
                   onFilters: () => _openFilterPanel(context),
                   onTransitions: () => _openTransitionPanel(context),
+                  onStickers: () => _openStickerPanel(context),
                   onExport: () => _handleExport(context),
                 ),
               ],
