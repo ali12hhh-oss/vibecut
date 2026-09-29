@@ -1,32 +1,95 @@
-﻿import 'engine_command.dart';
+﻿import 'dart:io';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:path_provider/path_provider.dart';
+import 'engine_command.dart';
+import 'engine_text.dart';
 import 'engine_timeline.dart';
 
+/// ينفذ خط أنابيب التصدير الكامل: قص كل مقطع ثم دمجها ثم تركيب النصوص
 class EngineProcessor {
   final EngineCommand _command = EngineCommand();
-  final EngineTimeline _timeline;
+  final EngineText _engineText = EngineText();
 
-  EngineProcessor(this._timeline);
+  Future<String> processTimeline(EngineTimeline timeline) async {
+    final videoTrack = timeline.trackOfType(ClipType.video);
+    if (videoTrack.clips.isEmpty) {
+      throw Exception('لا توجد مقاطع فيديو في المشروع لتصديرها');
+    }
 
-  /// دالة المعالجة الرئيسية
-  Future<void> processProject(String outputPath) async {
-    List<TimelineSegment> segments = _timeline.segments;
+    final tempDir = await getTemporaryDirectory();
+    final workDir = Directory('${tempDir.path}/vibecut_export_${DateTime.now().millisecondsSinceEpoch}');
+    await workDir.create(recursive: true);
 
-    if (segments.isEmpty) return;
+    final trimmedPaths = <String>[];
+    for (int i = 0; i < videoTrack.clips.length; i++) {
+      final clip = videoTrack.clips[i];
+      if (clip.sourcePath == null) continue;
+      final outPath = '${workDir.path}/part_$i.mp4';
+      final trimCmd = '-i "${clip.sourcePath}" -ss ${clip.trimStart} -t ${clip.duration} '
+          '-c:v libx264 -preset veryfast -c:a aac -avoid_negative_ts make_zero "$outPath"';
+      final ok = await _command.executeCommand(trimCmd);
+      if (!ok) {
+        throw Exception('فشل قص المقطع رقم ${i + 1}');
+      }
+      trimmedPaths.add(outPath);
+    }
 
-    print("بدء معالجة المشروع: ${segments.length} مقاطع");
+    if (trimmedPaths.isEmpty) {
+      throw Exception('تعذر تجهيز أي مقطع للتصدير');
+    }
 
-    // هنا نقوم بإنشاء سلسلة الأوامر
-    // في النسخة القادمة سنربط هذه الدالة بـ FFmpegKit
-    for (int i = 0; i < segments.length; i++) {
-      var segment = segments[i];
-      print("معالجة المقطع ${i + 1}: ${segment.videoPath}");
-      
-      if (segment.transitionPath != null) {
-        print("تطبيق انتقال: ${segment.transitionPath}");
-        // سيتم استدعاء buildTransitionCommand هنا لاحقاً
+    final listFile = File('${workDir.path}/concat_list.txt');
+    final listContent = trimmedPaths.map((p) => "file '$p'").join('\n');
+    await listFile.writeAsString(listContent);
+
+    final mergedPath = '${workDir.path}/merged.mp4';
+    final concatCmd = '-f concat -safe 0 -i "${listFile.path}" -c copy "$mergedPath"';
+    final concatOk = await _command.executeCommand(concatCmd);
+    if (!concatOk) {
+      throw Exception('فشل دمج المقاطع في فيديو واحد');
+    }
+
+    final textTrack = timeline.trackOfType(ClipType.text);
+    String finalPath = mergedPath;
+
+    if (textTrack.clips.isNotEmpty) {
+      try {
+        final fontPath = await _extractFont(workDir.path);
+        final drawTextFilters = textTrack.clips.map((clip) {
+          final reshaped = _engineText.processArabic(clip.text ?? '');
+          final safeText = reshaped.replaceAll("'", "\\'").replaceAll(':', '\\:');
+          return "drawtext=fontfile='$fontPath':text='$safeText':fontcolor=white:fontsize=48:"
+              "x=(w-text_w)/2:y=h-th-80:box=1:boxcolor=black@0.4:boxborderw=10:"
+              "enable='between(t,${clip.startOnTrack},${clip.endOnTrack})'";
+        }).join(',');
+
+        final withTextPath = '${workDir.path}/final.mp4';
+        final textCmd = '-i "$mergedPath" -vf "$drawTextFilters" -c:a copy "$withTextPath"';
+        final textOk = await _command.executeCommand(textCmd);
+        if (textOk) {
+          finalPath = withTextPath;
+        }
+      } catch (_) {
+        // إن فشلت مرحلة النص، نُبقي على الفيديو المدموج بلا نص بدلاً من إفشال التصدير بالكامل
       }
     }
 
-    print("اكتملت المعالجة بنجاح في: $outputPath");
+    final docsDir = await getApplicationDocumentsDirectory();
+    final exportsDir = Directory('${docsDir.path}/VibeCut/exports');
+    await exportsDir.create(recursive: true);
+    final finalOutput = '${exportsDir.path}/vibecut_${DateTime.now().millisecondsSinceEpoch}.mp4';
+    await File(finalPath).copy(finalOutput);
+
+    return finalOutput;
+  }
+
+  /// يستخرج خطاً يدعم العربية من الأصول إلى ملف حقيقي يستطيع FFmpeg قراءته
+  Future<String> _extractFont(String workDirPath) async {
+    final fontData = await rootBundle.load('assets/core/fonts/Cairo-Regular.ttf');
+    final fontFile = File('$workDirPath/Cairo-Regular.ttf');
+    await fontFile.writeAsBytes(
+      fontData.buffer.asUint8List(fontData.offsetInBytes, fontData.lengthInBytes),
+    );
+    return fontFile.path;
   }
 }

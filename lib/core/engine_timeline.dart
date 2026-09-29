@@ -1,42 +1,162 @@
-﻿class TimelineSegment {
-  final String videoPath;
-  final String? transitionPath;
-  final double startTime;
-  final double duration;
+﻿import 'dart:math';
 
-  TimelineSegment({
-    required this.videoPath,
-    this.transitionPath,
-    this.startTime = 0.0,
-    required this.duration,
+/// أنواع المقاطع التي يدعمها المحرر
+enum ClipType { video, audio, text, image, sticker }
+
+/// مقطع واحد على الخط الزمني (فيديو، صوت، نص، صورة...)
+class TimelineClip {
+  final String id;
+  final ClipType type;
+  final String? sourcePath; // مسار الملف المصدر (فيديو/صوت/صورة)
+  final double sourceDuration; // المدة الكاملة للملف المصدر بالثواني
+  double trimStart; // بداية القص داخل المصدر
+  double trimEnd; // نهاية القص داخل المصدر
+  double startOnTrack; // موضع بداية المقطع على المسار الزمني (بالثواني)
+
+  // خصائص النص (لمقاطع النوع text فقط)
+  String? text;
+  int? textColorValue;
+  double? fontSize;
+
+  TimelineClip({
+    required this.id,
+    required this.type,
+    this.sourcePath,
+    required this.sourceDuration,
+    required this.trimStart,
+    required this.trimEnd,
+    required this.startOnTrack,
+    this.text,
+    this.textColorValue,
+    this.fontSize,
   });
+
+  double get duration => (trimEnd - trimStart).clamp(0.0, sourceDuration);
+  double get endOnTrack => startOnTrack + duration;
 }
 
-class EngineTimeline {
-  List<TimelineSegment> _segments = [];
+/// مسار واحد في التايم لاين (فيديو أو صوت أو نص)
+class TimelineTrack {
+  final String id;
+  final ClipType type;
+  final List<TimelineClip> clips;
 
-  // إضافة مقطع جديد للتايم لاين
-  void addSegment(TimelineSegment segment) {
-    _segments.add(segment);
+  TimelineTrack({required this.id, required this.type, List<TimelineClip>? clips})
+      : clips = clips ?? [];
+
+  double get trackDuration {
+    if (clips.isEmpty) return 0.0;
+    return clips.map((c) => c.endOnTrack).reduce(max);
+  }
+}
+
+/// التايم لاين الكامل للمشروع: يدير مسارات الفيديو/الصوت/النص وكل المقاطع فيها
+class EngineTimeline {
+  final List<TimelineTrack> tracks;
+
+  EngineTimeline()
+      : tracks = [
+          TimelineTrack(id: 'video_main', type: ClipType.video),
+          TimelineTrack(id: 'audio_main', type: ClipType.audio),
+          TimelineTrack(id: 'text_main', type: ClipType.text),
+        ];
+
+  TimelineTrack trackOfType(ClipType type) =>
+      tracks.firstWhere((t) => t.type == type, orElse: () => tracks.first);
+
+  double get totalDuration {
+    if (tracks.every((t) => t.clips.isEmpty)) return 0.0;
+    return tracks.map((t) => t.trackDuration).reduce(max);
   }
 
-  // حذف مقطع
-  void removeSegment(int index) {
-    if (index >= 0 && index < _segments.length) {
-      _segments.removeAt(index);
+  String _newId() => '${DateTime.now().microsecondsSinceEpoch}_${Random().nextInt(9999)}';
+
+  /// يضيف مقطع فيديو جديد في نهاية مسار الفيديو
+  TimelineClip addVideoClip({required String path, required double sourceDuration}) {
+    final track = trackOfType(ClipType.video);
+    final clip = TimelineClip(
+      id: _newId(),
+      type: ClipType.video,
+      sourcePath: path,
+      sourceDuration: sourceDuration,
+      trimStart: 0.0,
+      trimEnd: sourceDuration,
+      startOnTrack: track.trackDuration,
+    );
+    track.clips.add(clip);
+    return clip;
+  }
+
+  /// يضيف مقطع نص في موضع زمني محدد
+  TimelineClip addTextClip({required String text, double duration = 3.0, double? startOnTrack}) {
+    final track = trackOfType(ClipType.text);
+    final clip = TimelineClip(
+      id: _newId(),
+      type: ClipType.text,
+      sourceDuration: duration,
+      trimStart: 0.0,
+      trimEnd: duration,
+      startOnTrack: startOnTrack ?? 0.0,
+      text: text,
+    );
+    track.clips.add(clip);
+    return clip;
+  }
+
+  TimelineTrack? trackOfClip(String clipId) {
+    for (final track in tracks) {
+      if (track.clips.any((c) => c.id == clipId)) return track;
+    }
+    return null;
+  }
+
+  void removeClip(String clipId) {
+    for (final track in tracks) {
+      track.clips.removeWhere((c) => c.id == clipId);
     }
   }
 
-  // الحصول على كل المقاطع الحالية
-  List<TimelineSegment> get segments => _segments;
+  /// يقسم مقطعاً إلى قسمين عند موضع زمني مطلق على المسار
+  TimelineClip? splitClip(String clipId, double atTimelinePosition) {
+    final track = trackOfClip(clipId);
+    if (track == null) return null;
+    final index = track.clips.indexWhere((c) => c.id == clipId);
+    if (index == -1) return null;
+    final clip = track.clips[index];
 
-  // مسح التايم لاين بالكامل
-  void clearTimeline() {
-    _segments.clear();
+    if (atTimelinePosition <= clip.startOnTrack || atTimelinePosition >= clip.endOnTrack) {
+      return null; // نقطة القص خارج حدود المقطع
+    }
+
+    final splitOffset = atTimelinePosition - clip.startOnTrack;
+    final splitSourcePoint = clip.trimStart + splitOffset;
+
+    final secondHalf = TimelineClip(
+      id: _newId(),
+      type: clip.type,
+      sourcePath: clip.sourcePath,
+      sourceDuration: clip.sourceDuration,
+      trimStart: splitSourcePoint,
+      trimEnd: clip.trimEnd,
+      startOnTrack: atTimelinePosition,
+      text: clip.text,
+      textColorValue: clip.textColorValue,
+      fontSize: clip.fontSize,
+    );
+
+    clip.trimEnd = splitSourcePoint;
+    track.clips.insert(index + 1, secondHalf);
+    return secondHalf;
   }
 
-  // حساب إجمالي مدة المشروع بناءً على كل المقاطع
-  double get totalDuration {
-    return _segments.fold(0.0, (sum, item) => sum + item.duration);
+  /// يعيد المقطع النشط في مسار معين عند موضع زمني معين
+  TimelineClip? activeClipOnTrack(ClipType type, double position) {
+    final track = trackOfType(type);
+    for (final clip in track.clips) {
+      if (position >= clip.startOnTrack && position < clip.endOnTrack) {
+        return clip;
+      }
+    }
+    return null;
   }
 }
