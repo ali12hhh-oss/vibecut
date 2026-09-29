@@ -1,9 +1,9 @@
 ﻿import 'dart:math';
 
 /// أنواع المقاطع التي يدعمها المحرر
-enum ClipType { video, audio, text, image, sticker }
+enum ClipType { video, audio, text, image, sticker, pip }
 
-/// مقطع واحد على الخط الزمني (فيديو، صوت، نص، ملصق...)
+/// مقطع واحد على الخط الزمني (فيديو، صوت، نص، ملصق، صورة مركبة، أو فيديو مصغر PIP)
 class TimelineClip {
   final String id;
   final ClipType type;
@@ -31,6 +31,12 @@ class TimelineClip {
   // معامل السرعة (لمقاطع النوع video فقط؛ 1.0 طبيعي)
   double speed;
 
+  // مقدار التمويه/الضبابية (لمقاطع النوع video؛ 0 = بلا تمويه)
+  double blurAmount;
+
+  // شفافية الطبقة (لمقاطع image و sticker و pip)
+  double overlayOpacity;
+
   TimelineClip({
     required this.id,
     required this.type,
@@ -47,9 +53,11 @@ class TimelineClip {
     this.transitionOutId,
     this.volume = 1.0,
     this.speed = 1.0,
+    this.blurAmount = 0.0,
+    this.overlayOpacity = 1.0,
   });
 
-  /// طول المقطع في المصدر قبل تطبيق السرعة (ما يُقص فعلياً من الملف الأصلي)
+  /// طول المقطع في المصدر قبل تطبيق السرعة
   double get sourceSpan => (trimEnd - trimStart).clamp(0.0, sourceDuration);
 
   /// طول المقطع على التايم لاين بعد تطبيق السرعة
@@ -57,7 +65,7 @@ class TimelineClip {
   double get endOnTrack => startOnTrack + duration;
 }
 
-/// مسار واحد في التايم لاين (فيديو أو صوت أو نص أو ملصق)
+/// مسار واحد في التايم لاين
 class TimelineTrack {
   final String id;
   final ClipType type;
@@ -82,6 +90,8 @@ class EngineTimeline {
           TimelineTrack(id: 'audio_main', type: ClipType.audio),
           TimelineTrack(id: 'text_main', type: ClipType.text),
           TimelineTrack(id: 'sticker_main', type: ClipType.sticker),
+          TimelineTrack(id: 'image_main', type: ClipType.image),
+          TimelineTrack(id: 'pip_main', type: ClipType.pip),
         ];
 
   TimelineTrack trackOfType(ClipType type) =>
@@ -168,6 +178,46 @@ class EngineTimeline {
     return clip;
   }
 
+  /// صورة (من الجهاز) تُركّب فوق الفيديو مع إمكانية التحكم بالشفافية
+  TimelineClip addImageOverlayClip({
+    required String path,
+    double duration = 3.0,
+    double? startOnTrack,
+  }) {
+    final track = trackOfType(ClipType.image);
+    final clip = TimelineClip(
+      id: _newId(),
+      type: ClipType.image,
+      sourcePath: path,
+      sourceDuration: duration,
+      trimStart: 0.0,
+      trimEnd: duration,
+      startOnTrack: startOnTrack ?? 0.0,
+    );
+    track.clips.add(clip);
+    return clip;
+  }
+
+  /// فيديو صغير (PIP) يُركّب فوق الفيديو الرئيسي مع إمكانية التحكم بالشفافية
+  TimelineClip addPipClip({
+    required String path,
+    required double sourceDuration,
+    double? startOnTrack,
+  }) {
+    final track = trackOfType(ClipType.pip);
+    final clip = TimelineClip(
+      id: _newId(),
+      type: ClipType.pip,
+      sourcePath: path,
+      sourceDuration: sourceDuration,
+      trimStart: 0.0,
+      trimEnd: sourceDuration,
+      startOnTrack: startOnTrack ?? 0.0,
+    );
+    track.clips.add(clip);
+    return clip;
+  }
+
   TimelineTrack? trackOfClip(String clipId) {
     for (final track in tracks) {
       if (track.clips.any((c) => c.id == clipId)) return track;
@@ -201,7 +251,6 @@ class EngineTimeline {
       return null;
     }
 
-    // المقدار الزمني على التايم لاين يُحوّل إلى مقدار في المصدر مراعاة للسرعة
     final splitOffsetOnTrack = atTimelinePosition - clip.startOnTrack;
     final splitSourcePoint = clip.trimStart + splitOffsetOnTrack * clip.speed;
 
@@ -221,6 +270,8 @@ class EngineTimeline {
       transitionOutId: clip.transitionOutId,
       volume: clip.volume,
       speed: clip.speed,
+      blurAmount: clip.blurAmount,
+      overlayOpacity: clip.overlayOpacity,
     );
 
     clip.trimEnd = splitSourcePoint;
@@ -239,7 +290,6 @@ class EngineTimeline {
     return null;
   }
 
-  /// يعيد ترتيب مواضع مقاطع مسار الفيديو لتبقى متتابعة بلا فراغات، يُستدعى بعد أي حذف أو تغيير في المدة (السرعة)
   void reflowVideoTrack() {
     final track = trackOfType(ClipType.video);
     double cursor = 0.0;

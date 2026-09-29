@@ -68,7 +68,11 @@ class EditorCubit extends Cubit<EditorState> {
   VideoPlayerController? _activeController;
   String? _activeControllerClipId;
 
+  VideoPlayerController? _pipController;
+  String? _pipControllerClipId;
+
   VideoPlayerController? get activeController => _activeController;
+  VideoPlayerController? get pipController => _pipController;
 
   EditorCubit() : super(EditorState.initial());
 
@@ -86,6 +90,7 @@ class EditorCubit extends Cubit<EditorState> {
       clearSelection: clearSelection,
     ));
     _syncActiveController();
+    _syncPipController();
   }
 
   Future<void> _syncActiveController() async {
@@ -96,7 +101,6 @@ class EditorCubit extends Cubit<EditorState> {
       return;
     }
 
-    // موضع المصدر المقابل لموضع التايم لاين الحالي، مع مراعاة السرعة
     final sourceOffset = clip.trimStart + (state.position - clip.startOnTrack) * clip.speed;
 
     if (clip.id != _activeControllerClipId) {
@@ -120,6 +124,49 @@ class EditorCubit extends Cubit<EditorState> {
         if (controller.value.playbackSpeed != clip.speed) {
           await controller.setPlaybackSpeed(clip.speed);
         }
+        final currentMs = controller.value.position.inMilliseconds;
+        final targetMs = (sourceOffset * 1000).round();
+        if (!state.isPlaying || (currentMs - targetMs).abs() > 400) {
+          await controller.seekTo(Duration(milliseconds: targetMs));
+        }
+        if (state.isPlaying && !controller.value.isPlaying) {
+          await controller.play();
+        } else if (!state.isPlaying && controller.value.isPlaying) {
+          await controller.pause();
+        }
+      }
+    }
+  }
+
+  /// مزامنة متحكم فيديو PIP مع المقطع النشط في مسار PIP (بنفس منطق المزامنة المستخدم للفيديو الرئيسي)
+  Future<void> _syncPipController() async {
+    final clip = timeline.activeClipOnTrack(ClipType.pip, state.position);
+
+    if (clip == null || clip.sourcePath == null) {
+      await _pipController?.pause();
+      return;
+    }
+
+    final sourceOffset = clip.trimStart + (state.position - clip.startOnTrack);
+
+    if (clip.id != _pipControllerClipId) {
+      _pipControllerClipId = clip.id;
+      final oldController = _pipController;
+      final newController = VideoPlayerController.file(File(clip.sourcePath!));
+      _pipController = newController;
+      try {
+        await newController.initialize();
+        await newController.setVolume(0); // لا نريد خلط صوت مقطع PIP مع الصوت الرئيسي أثناء المعاينة
+        await newController.seekTo(Duration(milliseconds: (sourceOffset * 1000).round()));
+        if (state.isPlaying) await newController.play();
+      } catch (_) {
+        // تجاهل أخطاء تهيئة فيديو PIP
+      }
+      await oldController?.dispose();
+      if (!isClosed) emit(state.copyWith(revision: state.revision + 1));
+    } else {
+      final controller = _pipController;
+      if (controller != null && controller.value.isInitialized) {
         final currentMs = controller.value.position.inMilliseconds;
         final targetMs = (sourceOffset * 1000).round();
         if (!state.isPlaying || (currentMs - targetMs).abs() > 400) {
@@ -191,6 +238,41 @@ class EditorCubit extends Cubit<EditorState> {
       startOnTrack: state.position.clamp(0.0, endOfTimeline),
     );
     _bump();
+  }
+
+  /// يختار صورة حقيقية من الجهاز ويُركّبها فوق الفيديو، ويُعيد معرف المقطع الجديد لفتح لوحة الشفافية
+  Future<String?> pickAndAddImageOverlay() async {
+    final picked = await _picker.pickImage(source: ImageSource.gallery);
+    if (picked == null) return null;
+
+    final endOfTimeline = timeline.totalDuration;
+    final clip = timeline.addImageOverlayClip(
+      path: picked.path,
+      duration: 3.0,
+      startOnTrack: state.position.clamp(0.0, endOfTimeline),
+    );
+    _bump();
+    return clip.id;
+  }
+
+  /// يختار فيديو من الجهاز ويُضيفه كمقطع صغير (Picture-in-Picture) فوق الفيديو الرئيسي
+  Future<String?> pickAndAddPipVideo() async {
+    final picked = await _picker.pickVideo(source: ImageSource.gallery);
+    if (picked == null) return null;
+
+    final probe = VideoPlayerController.file(File(picked.path));
+    await probe.initialize();
+    final duration = probe.value.duration.inMilliseconds / 1000.0;
+    await probe.dispose();
+
+    final endOfTimeline = timeline.totalDuration;
+    final clip = timeline.addPipClip(
+      path: picked.path,
+      sourceDuration: duration,
+      startOnTrack: state.position.clamp(0.0, endOfTimeline),
+    );
+    _bump();
+    return clip.id;
   }
 
   void selectClip(String? clipId) {
@@ -269,12 +351,29 @@ class EditorCubit extends Cubit<EditorState> {
     _bump();
   }
 
-  /// يغيّر سرعة مقطع فيديو ويُعيد ترتيب ما بعده من المقاطع لمطابقة المدة الجديدة
   void setClipSpeed(String clipId, double speed) {
     final clip = timeline.findClip(clipId);
     if (clip == null || clip.type != ClipType.video) return;
     clip.speed = speed.clamp(0.1, 4.0);
     timeline.reflowVideoTrack();
+    _bump();
+  }
+
+  /// يضبط مقدار التمويه للمقطع المحدد أو المقطع النشط إن لم يوجد تحديد
+  void setBlurForActiveOrSelectedClip(double amount) {
+    final clip = state.selectedClipId != null
+        ? timeline.findClip(state.selectedClipId!)
+        : timeline.activeClipOnTrack(ClipType.video, state.position);
+    if (clip == null || clip.type != ClipType.video) return;
+    clip.blurAmount = amount.clamp(0.0, 20.0);
+    _bump();
+  }
+
+  /// يضبط شفافية مقطع طبقة (ملصق/صورة/PIP)
+  void setOverlayOpacity(String clipId, double opacity) {
+    final clip = timeline.findClip(clipId);
+    if (clip == null) return;
+    clip.overlayOpacity = opacity.clamp(0.0, 1.0);
     _bump();
   }
 
@@ -292,6 +391,7 @@ class EditorCubit extends Cubit<EditorState> {
   Future<void> close() {
     _playbackTimer?.cancel();
     _activeController?.dispose();
+    _pipController?.dispose();
     return super.close();
   }
 }

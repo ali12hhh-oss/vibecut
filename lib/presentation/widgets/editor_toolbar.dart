@@ -8,8 +8,11 @@ class EditorToolbar extends StatelessWidget {
   final VoidCallback onDelete;
   final VoidCallback onAddText;
   final VoidCallback onFilters;
+  final VoidCallback onBlur;
   final VoidCallback onTransitions;
   final VoidCallback onStickers;
+  final VoidCallback onImageOverlay;
+  final VoidCallback onPip;
   final VoidCallback onSpeed;
   final VoidCallback onExport;
   final bool hasSelection;
@@ -22,8 +25,11 @@ class EditorToolbar extends StatelessWidget {
     required this.onDelete,
     required this.onAddText,
     required this.onFilters,
+    required this.onBlur,
     required this.onTransitions,
     required this.onStickers,
+    required this.onImageOverlay,
+    required this.onPip,
     required this.onSpeed,
     required this.onExport,
     required this.hasSelection,
@@ -70,9 +76,24 @@ class EditorToolbar extends StatelessWidget {
               onPressed: onStickers,
             ),
             IconButton(
+              icon: const Icon(Icons.add_photo_alternate_outlined, color: Colors.white),
+              tooltip: 'تركيب صورة',
+              onPressed: onImageOverlay,
+            ),
+            IconButton(
+              icon: const Icon(Icons.picture_in_picture_alt, color: Colors.white),
+              tooltip: 'PIP',
+              onPressed: onPip,
+            ),
+            IconButton(
               icon: const Icon(Icons.tune, color: Colors.white),
               tooltip: 'فلاتر',
               onPressed: onFilters,
+            ),
+            IconButton(
+              icon: Icon(Icons.blur_on, color: hasSelection ? Colors.white : Colors.white24),
+              tooltip: 'تمويه',
+              onPressed: hasSelection ? onBlur : null,
             ),
             IconButton(
               icon: Icon(Icons.sync_alt, color: hasSelection ? Colors.white : Colors.white24),
