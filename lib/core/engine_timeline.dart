@@ -18,8 +18,11 @@ class TimelineClip {
   int? textColorValue;
   double? fontSize;
 
-  // معرف الفلتر المطبق (لمقاطع الفيديو، null = الأصلي بلا فلتر)
+  // معرف الفلتر المطبق (لمقاطع الفيديو)
   String? filterId;
+
+  // معرف الانتقال من هذا المقطع إلى المقطع التالي في نفس المسار (null = قطع مباشر)
+  String? transitionOutId;
 
   TimelineClip({
     required this.id,
@@ -33,6 +36,7 @@ class TimelineClip {
     this.textColorValue,
     this.fontSize,
     this.filterId,
+    this.transitionOutId,
   });
 
   double get duration => (trimEnd - trimStart).clamp(0.0, sourceDuration);
@@ -153,9 +157,11 @@ class EngineTimeline {
       textColorValue: clip.textColorValue,
       fontSize: clip.fontSize,
       filterId: clip.filterId,
+      transitionOutId: clip.transitionOutId,
     );
 
     clip.trimEnd = splitSourcePoint;
+    clip.transitionOutId = null; // الحد الجديد الناتج عن التقسيم يبدأ كقطع مباشر
     track.clips.insert(index + 1, secondHalf);
     return secondHalf;
   }

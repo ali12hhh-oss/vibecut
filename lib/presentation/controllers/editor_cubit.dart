@@ -87,7 +87,6 @@ class EditorCubit extends Cubit<EditorState> {
     _syncActiveController();
   }
 
-  /// يزامن متحكم الفيديو النشط مع موضع رأس التشغيل الحالي
   Future<void> _syncActiveController() async {
     final clip = timeline.activeClipOnTrack(ClipType.video, state.position);
 
@@ -129,7 +128,6 @@ class EditorCubit extends Cubit<EditorState> {
     }
   }
 
-  /// اختيار فيديو حقيقي من المعرض وإضافته لمسار الفيديو
   Future<void> pickAndAddVideo() async {
     final picked = await _picker.pickVideo(source: ImageSource.gallery);
     if (picked == null) return;
@@ -206,13 +204,22 @@ class EditorCubit extends Cubit<EditorState> {
     _bump(clearSelection: true);
   }
 
-  /// يطبق فلتراً على المقطع المحدد، أو على المقطع النشط عند رأس التشغيل إن لم يوجد تحديد
   void applyFilterToActiveOrSelectedClip(String? filterId) {
     final clip = state.selectedClipId != null
         ? timeline.findClip(state.selectedClipId!)
         : timeline.activeClipOnTrack(ClipType.video, state.position);
     if (clip == null || clip.type != ClipType.video) return;
     clip.filterId = filterId;
+    _bump();
+  }
+
+  /// يطبق انتقالاً بين المقطع المحدد والمقطع التالي له في مسار الفيديو
+  void applyTransitionAfterSelectedClip(String? transitionId) {
+    final id = state.selectedClipId;
+    if (id == null) return;
+    final clip = timeline.findClip(id);
+    if (clip == null || clip.type != ClipType.video) return;
+    clip.transitionOutId = transitionId;
     _bump();
   }
 

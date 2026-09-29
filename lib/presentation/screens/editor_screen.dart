@@ -1,10 +1,12 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../controllers/editor_cubit.dart';
+import '../../core/engine_timeline.dart';
 import '../widgets/editor_toolbar.dart';
 import '../widgets/filter_panel.dart';
 import '../widgets/preview_player.dart';
 import '../widgets/timeline_view.dart';
+import '../widgets/transition_panel.dart';
 
 class EditorScreen extends StatefulWidget {
   const EditorScreen({super.key});
@@ -53,6 +55,37 @@ class _EditorScreenState extends State<EditorScreen> {
         controller: cubit.activeController,
         selectedFilterId: activeClip.filterId,
         onSelect: (id) => cubit.applyFilterToActiveOrSelectedClip(id),
+      ),
+    );
+  }
+
+  Future<void> _openTransitionPanel(BuildContext context) async {
+    final cubit = context.read<EditorCubit>();
+    final id = cubit.state.selectedClipId;
+    if (id == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('حدد مقطع فيديو أولاً لإضافة انتقال بعده')),
+      );
+      return;
+    }
+    final clip = cubit.timeline.findClip(id);
+    if (clip == null || clip.type != ClipType.video) return;
+
+    final videoTrack = cubit.timeline.trackOfType(ClipType.video);
+    final index = videoTrack.clips.indexWhere((c) => c.id == id);
+    if (index == -1 || index >= videoTrack.clips.length - 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لا يوجد مقطع تالٍ لهذا المقطع لإضافة انتقال معه')),
+      );
+      return;
+    }
+
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => TransitionPanel(
+        selectedTransitionId: clip.transitionOutId,
+        onSelect: (transitionId) => cubit.applyTransitionAfterSelectedClip(transitionId),
       ),
     );
   }
@@ -131,6 +164,7 @@ class _EditorScreenState extends State<EditorScreen> {
                   onDelete: cubit.deleteSelectedClip,
                   onAddText: () => _promptAddText(context),
                   onFilters: () => _openFilterPanel(context),
+                  onTransitions: () => _openTransitionPanel(context),
                   onExport: () => _handleExport(context),
                 ),
               ],
