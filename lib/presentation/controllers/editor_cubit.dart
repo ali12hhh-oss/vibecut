@@ -351,16 +351,19 @@ class EditorCubit extends Cubit<EditorState> {
     }
   }
 
+  /// يقسم المقطع المحدد عند رأس التشغيل. يلتقط اللقطة قبل المحاولة، ولا يُسجلها في السجل إلا إن نجح التقسيم فعلاً
   void splitSelectedClipAtPlayhead() {
     final id = state.selectedClipId;
     if (id == null) return;
-    pushUndoCheckpoint();
+    final snapshot = timeline.clone();
     final newClip = timeline.splitClip(id, state.position);
-    if (newClip != null) {
-      _bump(selectedClipId: newClip.id);
-    } else {
-      undo(); // لم يحدث تقسيم فعلي، نتراجع عن نقطة الاسترداد الزائدة فوراً
+    if (newClip == null) return; // لم يحدث تغيير، لا داعي لتسجيل أي شيء في السجل
+    _undoStack.add(snapshot);
+    if (_undoStack.length > _maxHistory) {
+      _undoStack.removeAt(0);
     }
+    _redoStack.clear();
+    _bump(selectedClipId: newClip.id);
   }
 
   void deleteSelectedClip() {
