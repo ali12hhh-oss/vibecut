@@ -92,6 +92,7 @@ class _EditorScreenState extends State<EditorScreen> {
     final frameBytes = await _captureCurrentFrame();
     if (!context.mounted) return;
 
+    cubit.pushUndoCheckpoint();
     await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -119,6 +120,7 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
+    cubit.pushUndoCheckpoint();
     await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -152,6 +154,7 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
+    cubit.pushUndoCheckpoint();
     await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -218,6 +221,7 @@ class _EditorScreenState extends State<EditorScreen> {
     final clip = cubit.timeline.findClip(id);
     if (clip == null || clip.type != ClipType.video) return;
 
+    cubit.pushUndoCheckpoint();
     await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -259,6 +263,23 @@ class _EditorScreenState extends State<EditorScreen> {
 
             return Column(
               children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: Icon(Icons.undo, color: cubit.canUndo ? Colors.white : Colors.white24),
+                        tooltip: 'تراجع',
+                        onPressed: cubit.canUndo ? cubit.undo : null,
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.redo, color: cubit.canRedo ? Colors.white : Colors.white24),
+                        tooltip: 'إعادة',
+                        onPressed: cubit.canRedo ? cubit.redo : null,
+                      ),
+                    ],
+                  ),
+                ),
                 Expanded(
                   child: RepaintBoundary(
                     key: _previewBoundaryKey,
