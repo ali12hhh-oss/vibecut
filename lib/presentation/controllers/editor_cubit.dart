@@ -58,9 +58,17 @@ class EditorState {
 }
 
 class EditorCubit extends Cubit<EditorState> {
-  final EngineTimeline timeline = EngineTimeline();
+  EngineTimeline timeline = EngineTimeline();
   final EngineProcessor _processor = EngineProcessor();
   final ImagePicker _picker = ImagePicker();
+
+  // سجل التراجع/الإعادة (Undo/Redo) على شكل لقطات استرداد للتايم لاين الكامل، مثل معظم المحررات الاحترافية
+  final List<EngineTimeline> _undoStack = [];
+  final List<EngineTimeline> _redoStack = [];
+  static const int _maxHistory = 50;
+
+  bool get canUndo => _undoStack.isNotEmpty;
+  bool get canRedo => _redoStack.isNotEmpty;
 
   Timer? _playbackTimer;
   DateTime? _lastTick;
@@ -75,6 +83,34 @@ class EditorCubit extends Cubit<EditorState> {
   VideoPlayerController? get pipController => _pipController;
 
   EditorCubit() : super(EditorState.initial());
+
+  /// يلتقط نقطة استرداد قبل أي تعديل محتمل على التايم لاين (دالة عامة تُستدعى قبل أي أداة تحرير)
+  void pushUndoCheckpoint() {
+    _undoStack.add(timeline.clone());
+    if (_undoStack.length > _maxHistory) {
+      _undoStack.removeAt(0);
+    }
+    _redoStack.clear();
+    _bump();
+  }
+
+  void undo() {
+    if (_undoStack.isEmpty) return;
+    _redoStack.add(timeline.clone());
+    timeline = _undoStack.removeLast();
+    _activeControllerClipId = null;
+    _pipControllerClipId = null;
+    _bump(clearSelection: true);
+  }
+
+  void redo() {
+    if (_redoStack.isEmpty) return;
+    _undoStack.add(timeline.clone());
+    timeline = _redoStack.removeLast();
+    _activeControllerClipId = null;
+    _pipControllerClipId = null;
+    _bump(clearSelection: true);
+  }
 
   void _bump({
     double? position,
@@ -138,7 +174,6 @@ class EditorCubit extends Cubit<EditorState> {
     }
   }
 
-  /// مزامنة متحكم فيديو PIP مع المقطع النشط في مسار PIP (بنفس منطق المزامنة المستخدم للفيديو الرئيسي)
   Future<void> _syncPipController() async {
     final clip = timeline.activeClipOnTrack(ClipType.pip, state.position);
 
@@ -156,7 +191,7 @@ class EditorCubit extends Cubit<EditorState> {
       _pipController = newController;
       try {
         await newController.initialize();
-        await newController.setVolume(0); // لا نريد خلط صوت مقطع PIP مع الصوت الرئيسي أثناء المعاينة
+        await newController.setVolume(0);
         await newController.seekTo(Duration(milliseconds: (sourceOffset * 1000).round()));
         if (state.isPlaying) await newController.play();
       } catch (_) {
@@ -190,6 +225,7 @@ class EditorCubit extends Cubit<EditorState> {
     final duration = probe.value.duration.inMilliseconds / 1000.0;
     await probe.dispose();
 
+    pushUndoCheckpoint();
     timeline.addVideoClip(path: picked.path, sourceDuration: duration);
     _bump();
   }
@@ -210,6 +246,7 @@ class EditorCubit extends Cubit<EditorState> {
       await probe.dispose();
     }
 
+    pushUndoCheckpoint();
     final endOfTimeline = timeline.totalDuration;
     timeline.addAudioClip(
       path: path,
@@ -220,6 +257,7 @@ class EditorCubit extends Cubit<EditorState> {
   }
 
   void addTextClip(String text, {String? styleId}) {
+    pushUndoCheckpoint();
     final endOfTimeline = timeline.totalDuration;
     timeline.addTextClip(
       text: text,
@@ -231,6 +269,7 @@ class EditorCubit extends Cubit<EditorState> {
   }
 
   void addStickerClip(String assetPath) {
+    pushUndoCheckpoint();
     final endOfTimeline = timeline.totalDuration;
     timeline.addStickerClip(
       assetPath: assetPath,
@@ -240,11 +279,11 @@ class EditorCubit extends Cubit<EditorState> {
     _bump();
   }
 
-  /// يختار صورة حقيقية من الجهاز ويُركّبها فوق الفيديو، ويُعيد معرف المقطع الجديد لفتح لوحة الشفافية
   Future<String?> pickAndAddImageOverlay() async {
     final picked = await _picker.pickImage(source: ImageSource.gallery);
     if (picked == null) return null;
 
+    pushUndoCheckpoint();
     final endOfTimeline = timeline.totalDuration;
     final clip = timeline.addImageOverlayClip(
       path: picked.path,
@@ -255,7 +294,6 @@ class EditorCubit extends Cubit<EditorState> {
     return clip.id;
   }
 
-  /// يختار فيديو من الجهاز ويُضيفه كمقطع صغير (Picture-in-Picture) فوق الفيديو الرئيسي
   Future<String?> pickAndAddPipVideo() async {
     final picked = await _picker.pickVideo(source: ImageSource.gallery);
     if (picked == null) return null;
@@ -265,6 +303,7 @@ class EditorCubit extends Cubit<EditorState> {
     final duration = probe.value.duration.inMilliseconds / 1000.0;
     await probe.dispose();
 
+    pushUndoCheckpoint();
     final endOfTimeline = timeline.totalDuration;
     final clip = timeline.addPipClip(
       path: picked.path,
@@ -315,15 +354,19 @@ class EditorCubit extends Cubit<EditorState> {
   void splitSelectedClipAtPlayhead() {
     final id = state.selectedClipId;
     if (id == null) return;
+    pushUndoCheckpoint();
     final newClip = timeline.splitClip(id, state.position);
     if (newClip != null) {
       _bump(selectedClipId: newClip.id);
+    } else {
+      undo(); // لم يحدث تقسيم فعلي، نتراجع عن نقطة الاسترداد الزائدة فوراً
     }
   }
 
   void deleteSelectedClip() {
     final id = state.selectedClipId;
     if (id == null) return;
+    pushUndoCheckpoint();
     final clip = timeline.findClip(id);
     final wasVideo = clip?.type == ClipType.video;
     timeline.removeClip(id);
@@ -359,7 +402,6 @@ class EditorCubit extends Cubit<EditorState> {
     _bump();
   }
 
-  /// يضبط مقدار التمويه للمقطع المحدد أو المقطع النشط إن لم يوجد تحديد
   void setBlurForActiveOrSelectedClip(double amount) {
     final clip = state.selectedClipId != null
         ? timeline.findClip(state.selectedClipId!)
@@ -369,7 +411,6 @@ class EditorCubit extends Cubit<EditorState> {
     _bump();
   }
 
-  /// يضبط شفافية مقطع طبقة (ملصق/صورة/PIP)
   void setOverlayOpacity(String clipId, double opacity) {
     final clip = timeline.findClip(clipId);
     if (clip == null) return;
