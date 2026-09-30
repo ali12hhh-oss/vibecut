@@ -1,14 +1,13 @@
 ﻿import 'dart:io';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:video_player/video_player.dart';
+import '../../core/effects/effect_resolver.dart';
 import '../../core/engine_timeline.dart';
 import '../../core/models/text_style_preset.dart';
-import '../../core/models/video_filter.dart';
 import '../controllers/editor_cubit.dart';
 
-/// يعرض الإطار الحالي للفيديو مع الفلتر/التمويه، وطبقات النصوص، والملصقات، وصور التركيب، وفيديو PIP
+/// يعرض الإطار الحالي للفيديو، مطبقاً عليه نفس قائمة التأثيرات المُطبقة لاحقاً عند التصدير
 class PreviewPlayer extends StatelessWidget {
   const PreviewPlayer({super.key});
 
@@ -21,11 +20,6 @@ class PreviewPlayer extends StatelessWidget {
         final pipController = cubit.pipController;
         final timeline = cubit.timeline;
         final activeClip = timeline.activeClipOnTrack(ClipType.video, state.position);
-        final preset = videoFilterPresets.firstWhere(
-          (f) => f.id == activeClip?.filterId,
-          orElse: () => videoFilterPresets.first,
-        );
-        final blurAmount = activeClip?.blurAmount ?? 0.0;
 
         final activeTextClips = timeline.tracks
             .where((t) => t.type == ClipType.text)
@@ -51,13 +45,9 @@ class PreviewPlayer extends StatelessWidget {
               )
             : const Icon(Icons.movie_creation_outlined, color: Colors.white24, size: 64);
 
-        videoWidget = ColorFiltered(colorFilter: ColorFilter.matrix(preset.matrix), child: videoWidget);
-
-        if (blurAmount > 0) {
-          videoWidget = ImageFiltered(
-            imageFilter: ImageFilter.blur(sigmaX: blurAmount, sigmaY: blurAmount),
-            child: videoWidget,
-          );
+        // نفس قائمة التأثيرات التي سيستخدمها EngineProcessor عند التصدير، بنفس الترتيب
+        for (final effect in resolveVisualEffects(activeClip)) {
+          videoWidget = effect.applyPreview(videoWidget);
         }
 
         return Container(

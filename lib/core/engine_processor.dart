@@ -2,14 +2,14 @@
 import 'package:flutter/material.dart' show Color;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
+import 'effects/effect_resolver.dart';
 import 'engine_command.dart';
 import 'engine_text.dart';
 import 'engine_timeline.dart';
 import 'models/text_style_preset.dart';
 import 'models/transition_type.dart';
-import 'models/video_filter.dart';
 
-/// ينفذ خط أنابيب التصدير الكامل: قص (فلتر/تمويه/سرعة) → دمج/انتقالات → نصوص → طبقات الصور/الملصقات → PIP → مزج الصوت
+/// ينفذ خط أنابيب التصدير الكامل: قص (بنفس قائمة التأثيرات المُطبقة في المعاينة) → دمج/انتقالات → نصوص → طبقات الصور/الملصقات → PIP → مزج الصوت
 class EngineProcessor {
   final EngineCommand _command = EngineCommand();
   final EngineText _engineText = EngineText();
@@ -30,16 +30,12 @@ class EngineProcessor {
       if (clip.sourcePath == null) continue;
       final outPath = '${workDir.path}/part_$i.mp4';
 
-      final preset = clip.filterId != null
-          ? videoFilterPresets.firstWhere(
-              (f) => f.id == clip.filterId,
-              orElse: () => videoFilterPresets.first,
-            )
-          : null;
-
+      // نفس قائمة التأثيرات التي تُطبّق في المعاينة، بنفس الترتيب، لضمان أن المصدّر يطابق ما رآه المستخدم
       final vfParts = <String>[];
-      if (preset?.ffmpegFilter != null) vfParts.add(preset!.ffmpegFilter!);
-      if (clip.blurAmount > 0) vfParts.add('boxblur=${clip.blurAmount.toStringAsFixed(1)}:1');
+      for (final effect in resolveVisualEffects(clip)) {
+        final f = effect.ffmpegFilter();
+        if (f != null) vfParts.add(f);
+      }
       if (clip.speed != 1.0) vfParts.add('setpts=${(1 / clip.speed).toStringAsFixed(6)}*PTS');
       final vfArg = vfParts.isNotEmpty ? '-vf "${vfParts.join(',')}" ' : '';
 
@@ -254,12 +250,12 @@ class EngineProcessor {
     final safeText = reshaped.replaceAll("'", "\\'").replaceAll(':', '\\:');
 
     final color = preset.style.color ?? const Color(0xFFFFFFFF);
-    final fontColorHex = '0x${color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}';
+    final fontColorHex = '0x${color.value.toRadixString(16).padLeft(8, '0').substring(2)}';
     final fontSize = (preset.style.fontSize ?? 32).round();
 
     String boxPart = '';
     if (preset.backgroundColor != null) {
-      final bgHex = '0x${preset.backgroundColor!.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}';
+      final bgHex = '0x${preset.backgroundColor!.value.toRadixString(16).padLeft(8, '0').substring(2)}';
       boxPart = 'box=1:boxcolor=$bgHex@0.55:boxborderw=10:';
     }
 
@@ -347,7 +343,6 @@ class EngineProcessor {
     return file.path;
   }
 
-  /// يحل مسار مدخل إما إلى ملف حقيقي على الجهاز (من المعرض) أو يستخرجه من أصول التطبيق إن كان مسار أصل
   Future<String> _resolveInputPath(String path, String workDirPath) {
     if (path.startsWith('assets/')) {
       return _extractAsset(path, workDirPath);
