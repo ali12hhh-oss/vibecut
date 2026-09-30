@@ -13,28 +13,17 @@ class TimelineClip {
   double trimEnd;
   double startOnTrack;
 
-  // خصائص النص (لمقاطع النوع text فقط)
   String? text;
   int? textColorValue;
   double? fontSize;
   String? textStyleId;
 
-  // معرف الفلتر المطبق (لمقاطع الفيديو)
   String? filterId;
-
-  // معرف الانتقال من هذا المقطع إلى المقطع التالي له في نفس المسار
   String? transitionOutId;
 
-  // مستوى الصوت (لمقاطع النوع audio)
   double volume;
-
-  // معامل السرعة (لمقاطع النوع video فقط؛ 1.0 طبيعي)
   double speed;
-
-  // مقدار التمويه/الضبابية (لمقاطع النوع video؛ 0 = بلا تمويه)
   double blurAmount;
-
-  // شفافية الطبقة (لمقاطع image و sticker و pip)
   double overlayOpacity;
 
   TimelineClip({
@@ -57,12 +46,30 @@ class TimelineClip {
     this.overlayOpacity = 1.0,
   });
 
-  /// طول المقطع في المصدر قبل تطبيق السرعة
   double get sourceSpan => (trimEnd - trimStart).clamp(0.0, sourceDuration);
-
-  /// طول المقطع على التايم لاين بعد تطبيق السرعة
   double get duration => sourceSpan / speed;
   double get endOnTrack => startOnTrack + duration;
+
+  /// نسخة مستقلة كاملة من المقطع، تُستخدم لحفظ لقطات التراجع (Undo/Redo)
+  TimelineClip clone() => TimelineClip(
+        id: id,
+        type: type,
+        sourcePath: sourcePath,
+        sourceDuration: sourceDuration,
+        trimStart: trimStart,
+        trimEnd: trimEnd,
+        startOnTrack: startOnTrack,
+        text: text,
+        textColorValue: textColorValue,
+        fontSize: fontSize,
+        textStyleId: textStyleId,
+        filterId: filterId,
+        transitionOutId: transitionOutId,
+        volume: volume,
+        speed: speed,
+        blurAmount: blurAmount,
+        overlayOpacity: overlayOpacity,
+      );
 }
 
 /// مسار واحد في التايم لاين
@@ -178,7 +185,6 @@ class EngineTimeline {
     return clip;
   }
 
-  /// صورة (من الجهاز) تُركّب فوق الفيديو مع إمكانية التحكم بالشفافية
   TimelineClip addImageOverlayClip({
     required String path,
     double duration = 3.0,
@@ -198,7 +204,6 @@ class EngineTimeline {
     return clip;
   }
 
-  /// فيديو صغير (PIP) يُركّب فوق الفيديو الرئيسي مع إمكانية التحكم بالشفافية
   TimelineClip addPipClip({
     required String path,
     required double sourceDuration,
@@ -297,5 +302,16 @@ class EngineTimeline {
       clip.startOnTrack = cursor;
       cursor += clip.duration;
     }
+  }
+
+  /// نسخة مستقلة كاملة من التايم لاين بأكمله، تُستخدم لحفظ نقطة استرداد (Undo/Redo)
+  EngineTimeline clone() {
+    final copy = EngineTimeline();
+    for (final track in tracks) {
+      final targetTrack = copy.trackOfType(track.type);
+      targetTrack.clips.clear();
+      targetTrack.clips.addAll(track.clips.map((c) => c.clone()));
+    }
+    return copy;
   }
 }
